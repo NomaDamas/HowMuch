@@ -51,7 +51,8 @@ export async function analyzeObject(input: AnalyzeInput): Promise<ProductInsight
   const candidates = await vlm.identify({ imageDataUrl: input.imageDataUrl, selection: input.selection });
   const segmentation = await mask.segment({ imageDataUrl: input.imageDataUrl, selection: input.selection });
   const candidate = candidates[0] ?? { name: '알 수 없는 물체', confidence: 0.2 };
-  const offers = await search.search([candidate.brand, candidate.name].filter(Boolean).join(' '), { locale: input.locale ?? 'ko-KR', imageDataUrl: input.imageDataUrl });
+  const query = (candidate.queries?.[0] || [candidate.brand, candidate.model, candidate.name].filter(Boolean).join(' '));
+  const offers = await search.search(query, { locale: input.locale ?? 'ko-KR', imageDataUrl: input.imageDataUrl });
   const deduped = normalizeOffers(offers, input.locale ?? 'ko-KR');
   const newPrices = deduped.filter((o) => o.condition === 'new' && o.availability !== 'out_of_stock').map((o) => o.normalizedPrice ?? o.price);
   const usedPrices = deduped.filter((o) => o.condition === 'used').map((o) => o.normalizedPrice ?? o.price);
