@@ -14,6 +14,9 @@ export interface ProductCandidate {
   category?: string;
   confidence: number;
   imageUrl?: string;
+  model?: string;
+  attributes?: Record<string, string>;
+  queries?: string[];
 }
 
 export interface PriceOffer {
