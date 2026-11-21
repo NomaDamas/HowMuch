@@ -9,6 +9,7 @@ export interface SearchProvider {
 }
 export interface MaskProvider { segment(input:{imageDataUrl:string;selection:NormalizedSelection}):Promise<{maskDataUrl?:string;bounds:NormalizedSelection}>; }
 export interface DetectorProvider { detect(input:{imageDataUrl:string}):Promise<NormalizedSelection[]>; }
+export function needsLocalMask(maskDataUrl: string | undefined, sourceImage: string): boolean { return !maskDataUrl || maskDataUrl === sourceImage; }
 export function isValidCandidate(candidate: Partial<ProductCandidate>): boolean {
   return typeof candidate?.name === 'string' && candidate.name.length > 0 && Number.isFinite(candidate.confidence) && candidate.confidence >= 0 && candidate.confidence <= 1 && (candidate.attributes === undefined || typeof candidate.attributes === 'object') && (candidate.queries === undefined || Array.isArray(candidate.queries));
 }
@@ -61,7 +62,7 @@ export async function analyzeObject(input: AnalyzeInput): Promise<ProductInsight
   const mask = input.mask ?? new DemoMaskProvider();
   const candidates = await vlm.identify({ imageDataUrl: input.imageDataUrl, selection: input.selection });
   let segmentation = await mask.segment({ imageDataUrl: input.imageDataUrl, selection: input.selection });
-  if (!segmentation.maskDataUrl || segmentation.maskDataUrl === input.imageDataUrl) { const localMask = new DemoMaskProvider(); segmentation = await localMask.segment({ imageDataUrl: input.imageDataUrl, selection: input.selection }); }
+  if (needsLocalMask(segmentation.maskDataUrl, input.imageDataUrl)) { const localMask = new DemoMaskProvider(); segmentation = await localMask.segment({ imageDataUrl: input.imageDataUrl, selection: input.selection }); }
   const candidate = candidates[0] ?? { name: '알 수 없는 물체', confidence: 0.2 };
   const query = (candidate.queries?.[0] || [candidate.brand, candidate.model, candidate.name].filter(Boolean).join(' '));
   const offers = await search.search(query, { locale: input.locale ?? 'ko-KR', imageDataUrl: input.imageDataUrl });
