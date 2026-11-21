@@ -8,6 +8,8 @@ export interface SearchProvider {
   search(query: string, opts?: { locale?: string; imageDataUrl?: string }): Promise<PriceOffer[]>;
 }
 export interface MaskProvider { segment(input:{imageDataUrl:string;selection:NormalizedSelection}):Promise<{maskDataUrl?:string;bounds:NormalizedSelection}>; }
+export interface DetectorProvider { detect(input:{imageDataUrl:string}):Promise<NormalizedSelection[]>; }
+export class DemoDetectorProvider implements DetectorProvider { async detect(){ return [{x:.41,y:.43,width:.18,height:.14,polygon:[]}]; } }
 export class DemoMaskProvider implements MaskProvider { async segment(input:{imageDataUrl:string;selection:NormalizedSelection}){ const svg=`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 70"><path d="M4 46 Q18 16 48 24 Q72 27 96 44 L88 58 L12 59Z" fill="rgba(217,255,98,.22)" stroke="#d9ff62" stroke-width="2"/></svg>`; return {bounds:input.selection,maskDataUrl:`data:image/svg+xml,${encodeURIComponent(svg)}`}; } }
 
 /** Deterministic fallback keeps the local demo usable without API keys. */
