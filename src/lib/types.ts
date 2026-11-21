@@ -26,6 +26,9 @@ export interface PriceOffer {
   checkedAt: string;
   confidence: number;
   availability?: 'in_stock' | 'out_of_stock' | 'unknown';
+  shipping?: number;
+  shippingIncluded?: boolean;
+  normalizedPrice?: number;
 }
 
 export interface ProductInsight {
@@ -43,4 +46,11 @@ export interface ProductInsight {
   note?: string;
   displaySelection?: NormalizedSelection;
   currency?: PriceOffer['currency'];
+  priceSummary?: {
+    lowest: number;
+    median?: number;
+    range?: { min: number; max: number };
+    currency: 'KRW';
+    confidence: number;
+  };
 }

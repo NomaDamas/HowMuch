@@ -10,7 +10,9 @@ export interface SearchProvider {
 export interface MaskProvider { segment(input:{imageDataUrl:string;selection:NormalizedSelection}):Promise<{maskDataUrl?:string;bounds:NormalizedSelection}>; }
 export interface DetectorProvider { detect(input:{imageDataUrl:string}):Promise<NormalizedSelection[]>; }
 export class DemoDetectorProvider implements DetectorProvider { async detect(){ return [{x:.41,y:.43,width:.18,height:.14,polygon:[]}]; } }
-export class DemoMaskProvider implements MaskProvider { async segment(input:{imageDataUrl:string;selection:NormalizedSelection}){ const svg=`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 70"><path d="M4 46 Q18 16 48 24 Q72 27 96 44 L88 58 L12 59Z" fill="rgba(217,255,98,.22)" stroke="#d9ff62" stroke-width="2"/></svg>`; return {bounds:input.selection,maskDataUrl:`data:image/svg+xml,${encodeURIComponent(svg)}`}; } }
+export class DemoMaskProvider implements MaskProvider { async segment(input:{imageDataUrl:string;selection:NormalizedSelection}){ // The local fallback preserves real camera pixels; the polygon clip in the UI supplies the visible cutout boundary.
+  return {bounds:input.selection,maskDataUrl:input.imageDataUrl};
+} }
 
 /** Deterministic fallback keeps the local demo usable without API keys. */
 export class DemoVlmProvider implements VlmProvider {
@@ -50,9 +52,10 @@ export async function analyzeObject(input: AnalyzeInput): Promise<ProductInsight
   const segmentation = await mask.segment({ imageDataUrl: input.imageDataUrl, selection: input.selection });
   const candidate = candidates[0] ?? { name: '알 수 없는 물체', confidence: 0.2 };
   const offers = await search.search([candidate.brand, candidate.name].filter(Boolean).join(' '), { locale: input.locale ?? 'ko-KR', imageDataUrl: input.imageDataUrl });
-  const deduped = normalizeOffers(offers);
-  const newPrices = deduped.filter((o) => o.condition === 'new' && o.availability !== 'out_of_stock').map((o) => o.price);
-  const usedPrices = deduped.filter((o) => o.condition === 'used').map((o) => o.price);
+  const deduped = normalizeOffers(offers, input.locale ?? 'ko-KR');
+  const newPrices = deduped.filter((o) => o.condition === 'new' && o.availability !== 'out_of_stock').map((o) => o.normalizedPrice ?? o.price);
+  const usedPrices = deduped.filter((o) => o.condition === 'used').map((o) => o.normalizedPrice ?? o.price);
+  const priceSummary = summarizePrices(newPrices, deduped.filter((o) => o.condition === 'new').map((o) => o.confidence));
   return {
     id: globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`, candidate, offers:deduped,
     cutoutDataUrl: segmentation.maskDataUrl,
@@ -60,6 +63,7 @@ export async function analyzeObject(input: AnalyzeInput): Promise<ProductInsight
     cutoutPolygon: input.selection.polygon,
     lowestNew: newPrices.length ? Math.min(...newPrices) : undefined,
     usedRange: usedPrices.length ? { min: Math.min(...usedPrices), max: Math.max(...usedPrices) } : undefined,
+    priceSummary,
     confidence: candidate.confidence, checkedAt: new Date().toISOString(),
     anchor: { x: Math.min(0.96, (input.displaySelection ?? input.selection).x + (input.displaySelection ?? input.selection).width + 0.02), y: (input.displaySelection ?? input.selection).y + (input.displaySelection ?? input.selection).height / 2 },
     displaySelection: input.displaySelection ?? input.selection,
@@ -67,11 +71,21 @@ export async function analyzeObject(input: AnalyzeInput): Promise<ProductInsight
   };
 }
 
-export function normalizeOffers(offers: PriceOffer[]): PriceOffer[] {
-  const valid = offers.filter((offer) => Boolean(offer.url && offer.source && offer.checkedAt && offer.currency && offer.condition && Number.isFinite(offer.price) && offer.price > 0 && Number.isFinite(offer.confidence) && offer.confidence >= 0 && offer.confidence <= 1));
+const FX_TO_KRW: Record<string, number> = { KRW: 1, USD: 1380, JPY: 9.2, EUR: 1490 };
+
+export function normalizeOffers(offers: PriceOffer[], _locale = 'ko-KR'): PriceOffer[] {
+  const valid = offers.filter((offer) => Boolean(offer.url && offer.source && offer.checkedAt && offer.currency && offer.condition && Number.isFinite(offer.price) && offer.price > 0 && Number.isFinite(offer.confidence) && offer.confidence >= 0 && offer.confidence <= 1 && FX_TO_KRW[offer.currency]))
+    .map((offer) => ({ ...offer, normalizedPrice: Math.round((offer.price + (offer.shippingIncluded === false ? (offer.shipping ?? 0) : 0)) * FX_TO_KRW[offer.currency]) }));
   const byUrl = Array.from(new Map(valid.map((offer) => [offer.url, offer])).values());
   if (byUrl.length < 4) return byUrl;
-  const prices = byUrl.map((offer) => offer.price).sort((a, b) => a - b);
+  const prices = byUrl.map((offer) => offer.normalizedPrice ?? offer.price).sort((a, b) => a - b);
   const median = prices[Math.floor(prices.length / 2)];
-  return byUrl.filter((offer) => offer.price <= median * 5 && offer.price >= median / 5);
+  return byUrl.filter((offer) => (offer.normalizedPrice ?? offer.price) <= median * 5 && (offer.normalizedPrice ?? offer.price) >= median / 5);
+}
+
+function summarizePrices(prices: number[], confidences: number[]) {
+  if (!prices.length) return undefined;
+  const sorted = [...prices].sort((a, b) => a - b);
+  const median = sorted[Math.floor(sorted.length / 2)];
+  return { lowest: sorted[0], median, range: { min: sorted[0], max: sorted[sorted.length - 1] }, currency: 'KRW' as const, confidence: confidences.length ? confidences.reduce((a, b) => a + b, 0) / confidences.length : 0 };
 }
