@@ -36,19 +36,23 @@ export interface AnalyzeInput {
   locale?: string;
   vlm?: VlmProvider;
   search?: SearchProvider;
+  mask?: MaskProvider;
 }
 
 export async function analyzeObject(input: AnalyzeInput): Promise<ProductInsight> {
   const vlm = input.vlm ?? new DemoVlmProvider();
   const search = input.search ?? new DemoSearchProvider();
+  const mask = input.mask ?? new DemoMaskProvider();
   const candidates = await vlm.identify({ imageDataUrl: input.imageDataUrl, selection: input.selection });
+  const segmentation = await mask.segment({ imageDataUrl: input.imageDataUrl, selection: input.selection });
   const candidate = candidates[0] ?? { name: '알 수 없는 물체', confidence: 0.2 };
   const offers = await search.search([candidate.brand, candidate.name].filter(Boolean).join(' '), { locale: input.locale ?? 'ko-KR' });
   const deduped = Array.from(new Map(offers.map((offer) => [offer.url, offer])).values());
   const newPrices = deduped.filter((o) => o.condition === 'new' && o.availability !== 'out_of_stock').map((o) => o.price);
   const usedPrices = deduped.filter((o) => o.condition === 'used').map((o) => o.price);
   return {
-    id: crypto.randomUUID(), candidate, offers:deduped,
+    id: globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`, candidate, offers:deduped,
+    cutoutDataUrl: segmentation.maskDataUrl,
     lowestNew: newPrices.length ? Math.min(...newPrices) : undefined,
     usedRange: usedPrices.length ? { min: Math.min(...usedPrices), max: Math.max(...usedPrices) } : undefined,
     confidence: candidate.confidence, checkedAt: new Date().toISOString(),
