@@ -15,7 +15,7 @@ export class HttpVlmProvider implements VlmProvider {
 export class HttpSearchProvider implements SearchProvider {
   constructor(private readonly endpoint: string, private readonly apiKey?: string) {}
   async search(query: string, opts?: { locale?: string }): Promise<PriceOffer[]> {
-    const response = await fetch(this.endpoint, { method: 'POST', headers: { 'content-type': 'application/json', ...(this.apiKey ? { authorization: `Bearer ${this.apiKey}` } : {}) }, body: JSON.stringify({ query, locale: opts?.locale ?? 'ko-KR', include: ['image', 'shopping', 'used'] }) });
+    const response = await fetch(this.endpoint, { method: 'POST', headers: { 'content-type': 'application/json', ...(this.apiKey ? { authorization: `Bearer ${this.apiKey}` } : {}) }, body: JSON.stringify({ query, image: opts?.imageDataUrl, locale: opts?.locale ?? 'ko-KR', include: ['image', 'shopping', 'used'] }) });
     if (!response.ok) throw new Error(`Search provider failed: ${response.status}`);
     const body = await response.json() as { offers?: PriceOffer[] };
     return Array.isArray(body.offers) ? body.offers.filter((offer) => Boolean(offer?.url && offer?.source && Number.isFinite(offer?.price) && offer.price > 0 && ['KRW','USD','JPY','EUR'].includes(offer.currency) && ['new','used','unknown'].includes(offer.condition) && typeof offer.checkedAt === 'string' && Number.isFinite(offer.confidence) && offer.confidence >= 0 && offer.confidence <= 1)) : [];

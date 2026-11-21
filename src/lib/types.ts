@@ -40,4 +40,6 @@ export interface ProductInsight {
   confidence: number;
   checkedAt: string;
   note?: string;
+  displaySelection?: NormalizedSelection;
+  currency?: PriceOffer['currency'];
 }

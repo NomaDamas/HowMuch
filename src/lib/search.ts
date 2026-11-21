@@ -37,6 +37,7 @@ export interface AnalyzeInput {
   vlm?: VlmProvider;
   search?: SearchProvider;
   mask?: MaskProvider;
+  displaySelection?: NormalizedSelection;
 }
 
 export async function analyzeObject(input: AnalyzeInput): Promise<ProductInsight> {
@@ -57,7 +58,9 @@ export async function analyzeObject(input: AnalyzeInput): Promise<ProductInsight
     lowestNew: newPrices.length ? Math.min(...newPrices) : undefined,
     usedRange: usedPrices.length ? { min: Math.min(...usedPrices), max: Math.max(...usedPrices) } : undefined,
     confidence: candidate.confidence, checkedAt: new Date().toISOString(),
-    anchor: { x: Math.min(0.96, input.selection.x + input.selection.width + 0.02), y: input.selection.y + input.selection.height / 2 }
+    anchor: { x: Math.min(0.96, (input.displaySelection ?? input.selection).x + (input.displaySelection ?? input.selection).width + 0.02), y: (input.displaySelection ?? input.selection).y + (input.displaySelection ?? input.selection).height / 2 },
+    displaySelection: input.displaySelection ?? input.selection,
+    currency: deduped[0]?.currency
   };
 }
 
