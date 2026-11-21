@@ -5,7 +5,7 @@ export interface VlmProvider {
 }
 
 export interface SearchProvider {
-  search(query: string, opts?: { locale?: string }): Promise<PriceOffer[]>;
+  search(query: string, opts?: { locale?: string; imageDataUrl?: string }): Promise<PriceOffer[]>;
 }
 export interface MaskProvider { segment(input:{imageDataUrl:string;selection:NormalizedSelection}):Promise<{maskDataUrl?:string;bounds:NormalizedSelection}>; }
 export class DemoMaskProvider implements MaskProvider { async segment(input:{imageDataUrl:string;selection:NormalizedSelection}){ const svg=`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 70"><path d="M4 46 Q18 16 48 24 Q72 27 96 44 L88 58 L12 59Z" fill="rgba(217,255,98,.22)" stroke="#d9ff62" stroke-width="2"/></svg>`; return {bounds:input.selection,maskDataUrl:`data:image/svg+xml,${encodeURIComponent(svg)}`}; } }
@@ -46,8 +46,8 @@ export async function analyzeObject(input: AnalyzeInput): Promise<ProductInsight
   const candidates = await vlm.identify({ imageDataUrl: input.imageDataUrl, selection: input.selection });
   const segmentation = await mask.segment({ imageDataUrl: input.imageDataUrl, selection: input.selection });
   const candidate = candidates[0] ?? { name: '알 수 없는 물체', confidence: 0.2 };
-  const offers = await search.search([candidate.brand, candidate.name].filter(Boolean).join(' '), { locale: input.locale ?? 'ko-KR' });
-  const deduped = Array.from(new Map(offers.map((offer) => [offer.url, offer])).values());
+  const offers = await search.search([candidate.brand, candidate.name].filter(Boolean).join(' '), { locale: input.locale ?? 'ko-KR', imageDataUrl: input.imageDataUrl });
+  const deduped = normalizeOffers(offers);
   const newPrices = deduped.filter((o) => o.condition === 'new' && o.availability !== 'out_of_stock').map((o) => o.price);
   const usedPrices = deduped.filter((o) => o.condition === 'used').map((o) => o.price);
   return {
@@ -59,4 +59,13 @@ export async function analyzeObject(input: AnalyzeInput): Promise<ProductInsight
     confidence: candidate.confidence, checkedAt: new Date().toISOString(),
     anchor: { x: Math.min(0.96, input.selection.x + input.selection.width + 0.02), y: input.selection.y + input.selection.height / 2 }
   };
+}
+
+export function normalizeOffers(offers: PriceOffer[]): PriceOffer[] {
+  const valid = offers.filter((offer) => Boolean(offer.url && offer.source && offer.checkedAt && offer.currency && offer.condition && Number.isFinite(offer.price) && offer.price > 0 && Number.isFinite(offer.confidence) && offer.confidence >= 0 && offer.confidence <= 1));
+  const byUrl = Array.from(new Map(valid.map((offer) => [offer.url, offer])).values());
+  if (byUrl.length < 4) return byUrl;
+  const prices = byUrl.map((offer) => offer.price).sort((a, b) => a - b);
+  const median = prices[Math.floor(prices.length / 2)];
+  return byUrl.filter((offer) => offer.price <= median * 5 && offer.price >= median / 5);
 }

@@ -21,3 +21,18 @@ export function cropDataUrl(video, selection) {
   canvas.getContext('2d')?.drawImage(video, sx, sy, sw, sh, 0, 0, sw, sh);
   return canvas.toDataURL('image/jpeg', .78);
 }
+export function coverTransform(viewport, media) {
+  const scale = Math.max(viewport.width / media.width, viewport.height / media.height);
+  const rendered = { width: media.width * scale, height: media.height * scale };
+  return { scale, offsetX: (rendered.width - viewport.width) / 2, offsetY: (rendered.height - viewport.height) / 2 };
+}
+export function screenToMediaSelection(selection, viewport, media) {
+  const transform = coverTransform(viewport, media);
+  const sx = selection.x * viewport.width + transform.offsetX;
+  const sy = selection.y * viewport.height + transform.offsetY;
+  const sw = selection.width * viewport.width;
+  const sh = selection.height * viewport.height;
+  return { x: clamp01(sx / renderedWidth(media, transform.scale)), y: clamp01(sy / renderedHeight(media, transform.scale)), width: clamp01(sw / renderedWidth(media, transform.scale)), height: clamp01(sh / renderedHeight(media, transform.scale)), polygon: selection.polygon };
+}
+function renderedWidth(media, scale) { return media.width * scale; }
+function renderedHeight(media, scale) { return media.height * scale; }
