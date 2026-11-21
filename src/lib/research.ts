@@ -1,6 +1,6 @@
 export interface ResearchContext {
   imageDataUrl: string;
-  cutoutDataUrl?: string;
+  cutoutDataUrl: string;
   selection: { x: number; y: number; width: number; height: number; polygon?: Array<{ x: number; y: number }> };
   locale: string;
 }
@@ -29,7 +29,7 @@ export interface ResearchResult {
   startedAt: string;
   completedAt: string;
   tools: string[];
-  status?: 'complete' | 'completed' | 'partial' | 'no_result' | 'error';
+  status: 'complete' | 'completed' | 'partial' | 'no_result' | 'error';
   queries?: string[];
 }
 
@@ -38,7 +38,7 @@ export interface ResearchAgentProvider {
 }
 
 export function validateResearchContext(input: Partial<ResearchContext>): input is ResearchContext {
-  return typeof input.imageDataUrl === 'string' && input.imageDataUrl.startsWith('data:image/') && typeof input.selection === 'object' && input.selection !== null && [input.selection.x, input.selection.y, input.selection.width, input.selection.height].every((value) => typeof value === 'number' && value >= 0 && value <= 1) && typeof input.locale === 'string' && input.locale.length > 0;
+  return typeof input.imageDataUrl === 'string' && input.imageDataUrl.startsWith('data:image/') && typeof input.selection === 'object' && input.selection !== null && [input.selection.x, input.selection.y, input.selection.width, input.selection.height].every((value) => typeof value === 'number' && value >= 0 && value <= 1) && typeof input.locale === 'string' && input.locale.length > 0 && typeof input.cutoutDataUrl === 'string' && input.cutoutDataUrl.startsWith('data:image/');
 }
 
 export function summarizeResearchOffers(offers: ResearchOffer[]) {

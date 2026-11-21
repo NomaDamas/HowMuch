@@ -1,0 +1,71 @@
+openapi: 3.0.3
+info:
+  title: HowMuch Agent API
+  version: 1.0.0
+  description: Agent-only multimodal product research. No direct search API fallback.
+paths:
+  /api/research:
+    post:
+      operationId: researchObject
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResearchRequest'
+      responses:
+        '200':
+          description: Evidence-backed agent result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResearchResult'
+        '400': { description: Invalid image, cutout, or selection }
+        '503': { description: Research agent unavailable }
+components:
+  schemas:
+    Selection:
+      type: object
+      required: [x,y,width,height]
+      properties:
+        x: { type: number, minimum: 0, maximum: 1 }
+        y: { type: number, minimum: 0, maximum: 1 }
+        width: { type: number, exclusiveMinimum: 0, maximum: 1 }
+        height: { type: number, exclusiveMinimum: 0, maximum: 1 }
+        polygon: { type: array, items: { type: object, required: [x,y], properties: { x: {type: number}, y: {type: number} } } }
+    ResearchRequest:
+      type: object
+      required: [imageDataUrl, cutoutDataUrl, selection, locale]
+      properties:
+        imageDataUrl: { type: string, pattern: '^data:image/' }
+        cutoutDataUrl: { type: string, pattern: '^data:image/' }
+        selection: { $ref: '#/components/schemas/Selection' }
+        locale: { type: string }
+    Offer:
+      type: object
+      required: [title,url,merchant,price,currency,condition,checkedAt,evidence,confidence]
+      properties:
+        id: { type: string }
+        title: { type: string }
+        url: { type: string, format: uri }
+        merchant: { type: string }
+        price: { type: number, exclusiveMinimum: 0 }
+        currency: { type: string, enum: [KRW, USD, JPY, EUR] }
+        condition: { type: string, enum: [new, used, unknown] }
+        checkedAt: { type: string, format: date-time }
+        evidence: { type: array, minItems: 1, items: { type: string } }
+        confidence: { type: number, minimum: 0, maximum: 1 }
+    ResearchResult:
+      type: object
+      required: [status,candidates,offers,tools,startedAt,completedAt]
+      properties:
+        status: { type: string, enum: [complete, completed, partial, no_result, error] }
+        candidates: { type: array, items: { type: object, required: [name,confidence], properties: { name: {type: string}, brand: {type: string}, model: {type: string}, category: {type: string}, confidence: {type: number, minimum: 0, maximum: 1} } } }
+        offers: { type: array, items: { $ref: '#/components/schemas/Offer' } }
+        lowest: { oneOf: [{type: string}, {$ref: '#/components/schemas/Offer'}] }
+        highest: { oneOf: [{type: string}, {$ref: '#/components/schemas/Offer'}] }
+        representative: { type: object, properties: { min: {type: number}, max: {type: number}, median: {type: number}, currency: {type: string} } }
+        tools: { type: array, items: {type: string} }
+        queries: { type: array, items: {type: string} }
+        startedAt: { type: string, format: date-time }
+        completedAt: { type: string, format: date-time }

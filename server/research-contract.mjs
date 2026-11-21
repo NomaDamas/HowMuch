@@ -12,6 +12,7 @@ export function isValidResearchInput(body) {
   if (s.width <= 0 || s.height <= 0 || s.x + s.width > 1 || s.y + s.height > 1) return false;
   if (s.polygon !== undefined && (!Array.isArray(s.polygon) || s.polygon.length < 3 || s.polygon.length > 256 || s.polygon.some((p) => !p || !isFiniteNumber(p.x) || !isFiniteNumber(p.y) || p.x < 0 || p.x > 1 || p.y < 0 || p.y > 1))) return false;
   const cutout = body.cutout ?? body.cutoutDataUrl;
+  if (cutout === undefined) return false;
   if (cutout !== undefined && (typeof cutout !== 'string' || !/^data:image\/(jpeg|jpg|png|webp);base64,/i.test(cutout) || cutout.length > 12_000_000)) return false;
   return true;
 }
@@ -29,6 +30,8 @@ export function isValidResearchResult(result) {
 }
 
 export function assertResearchEnvelope(body) {
-  if (!body || !['completed', 'complete', 'partial', 'no_result', 'error'].includes(body.status) || !isValidResearchResult(body.result)) throw new Error('research_agent_invalid_contract');
-  return { ...body.result, status: body.status, ...(Array.isArray(body.queries) ? { queries: body.queries } : {}) };
+  if (!body || !['completed', 'complete', 'partial', 'no_result', 'error'].includes(body.status)) throw new Error('research_agent_invalid_contract');
+  const result = body.result || body;
+  if (!isValidResearchResult(result)) throw new Error('research_agent_invalid_contract');
+  return { ...result, status: body.status, ...(Array.isArray(body.queries) ? { queries: body.queries } : {}) };
 }
