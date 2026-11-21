@@ -32,7 +32,8 @@ export function screenToMediaSelection(selection, viewport, media) {
   const sy = selection.y * viewport.height + transform.offsetY;
   const sw = selection.width * viewport.width;
   const sh = selection.height * viewport.height;
-  return { x: clamp01(sx / renderedWidth(media, transform.scale)), y: clamp01(sy / renderedHeight(media, transform.scale)), width: clamp01(sw / renderedWidth(media, transform.scale)), height: clamp01(sh / renderedHeight(media, transform.scale)), polygon: selection.polygon };
+  const polygon = (selection.polygon || []).map((point) => ({ x: clamp01((point.x * viewport.width + transform.offsetX) / renderedWidth(media, transform.scale)), y: clamp01((point.y * viewport.height + transform.offsetY) / renderedHeight(media, transform.scale)) }));
+  return { x: clamp01(sx / renderedWidth(media, transform.scale)), y: clamp01(sy / renderedHeight(media, transform.scale)), width: clamp01(sw / renderedWidth(media, transform.scale)), height: clamp01(sh / renderedHeight(media, transform.scale)), polygon };
 }
 export function cropLocalSelection(mediaSelection, polygon = []) {
   const width = Math.max(mediaSelection.width, 0.0001);
