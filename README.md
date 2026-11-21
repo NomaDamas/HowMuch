@@ -1,4 +1,4 @@
-# HowMuch by NomaDamas MinXing MinXing
+# HowMuch by NomaDamas MinXing
 
 HowMuch is an AGPL multimodal camera experience. Hold a product in view for about 3–5 seconds, or switch to touch/draw mode and select it. The selected object is segmented, sent with its surrounding scene to a commercial VLM-led research agent, and shown with an evidence-backed market range in a translucent HUD beside the object. The HUD hides on tracking loss and returns after reacquisition.
 
