@@ -53,6 +53,7 @@ export async function analyzeObject(input: AnalyzeInput): Promise<ProductInsight
   return {
     id: globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`, candidate, offers:deduped,
     cutoutDataUrl: segmentation.maskDataUrl,
+    cutoutBounds: segmentation.bounds,
     lowestNew: newPrices.length ? Math.min(...newPrices) : undefined,
     usedRange: usedPrices.length ? { min: Math.min(...usedPrices), max: Math.max(...usedPrices) } : undefined,
     confidence: candidate.confidence, checkedAt: new Date().toISOString(),
