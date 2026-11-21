@@ -23,6 +23,28 @@ export class HttpSearchProvider implements SearchProvider {
   }
 }
 
+/** OpenAI-compatible commercial VLM adapter. The server proxy should hold the key. */
+export class OpenAICompatibleVlmProvider implements VlmProvider {
+  constructor(private readonly endpoint: string, private readonly apiKey: string, private readonly model = 'gpt-4o-mini') {}
+  async identify(input: { imageDataUrl: string; selection: NormalizedSelection }): Promise<ProductCandidate[]> {
+    const response = await fetch(this.endpoint, { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${this.apiKey}` }, body: JSON.stringify({ model: this.model, temperature: 0, response_format: { type: 'json_object' }, messages: [{ role: 'user', content: [{ type: 'text', text: 'Identify the selected object for shopping. Do not use OCR. Return JSON with candidates: [{name, brand?, category?, confidence}].' }, { type: 'image_url', image_url: { url: input.imageDataUrl } }] }] }) });
+    if (!response.ok) throw new Error(`Commercial VLM failed: ${response.status}`);
+    const body = await response.json() as { choices?: Array<{ message?: { content?: string } }> };
+    try { const parsed = JSON.parse(body.choices?.[0]?.message?.content || '{}'); return Array.isArray(parsed.candidates) ? parsed.candidates.filter((candidate: ProductCandidate) => typeof candidate?.name === 'string' && Number.isFinite(candidate?.confidence)) : []; } catch { return []; }
+  }
+}
+
+/** SearXNG JSON adapter for permitted metasearch deployments. */
+export class SearxngSearchProvider implements SearchProvider {
+  constructor(private readonly endpoint: string) {}
+  async search(query: string, opts?: { locale?: string }): Promise<PriceOffer[]> {
+    const url = new URL(this.endpoint); url.searchParams.set('q', query); url.searchParams.set('format', 'json'); url.searchParams.set('language', opts?.locale || 'ko-KR');
+    const response = await fetch(url); if (!response.ok) throw new Error(`SearXNG failed: ${response.status}`);
+    const body = await response.json() as { results?: Array<{ title?: string; url?: string; content?: string }> }; const checkedAt = new Date().toISOString();
+    return (body.results || []).filter((item) => item.url && item.title).slice(0, 10).map((item) => ({ source: new URL(item.url!).hostname, title: item.title!, price: Number.NaN, currency: 'KRW' as const, condition: 'unknown' as const, url: item.url!, checkedAt, confidence: .35 } as PriceOffer));
+  }
+}
+
 export class HttpMaskProvider {
   constructor(private readonly endpoint: string, private readonly apiKey?: string) {}
   async segment(input: { imageDataUrl: string; selection: { x:number; y:number; width:number; height:number; polygon?: Array<{x:number;y:number}> } }) {
@@ -47,5 +69,5 @@ export class HttpAnalyzeProvider implements VlmProvider, SearchProvider, MaskPro
 }
 
 export function providerConfig() {
-  return { analyzeEndpoint: import.meta.env.VITE_ANALYZE_ENDPOINT as string | undefined, detectorEndpoint: import.meta.env.VITE_DETECTOR_ENDPOINT as string | undefined, vlmEndpoint: import.meta.env.VITE_VLM_ENDPOINT as string | undefined, searchEndpoint: import.meta.env.VITE_SEARCH_ENDPOINT as string | undefined, maskEndpoint: import.meta.env.VITE_MASK_ENDPOINT as string | undefined };
+  return { analyzeEndpoint: import.meta.env.VITE_ANALYZE_ENDPOINT as string | undefined, detectorEndpoint: import.meta.env.VITE_DETECTOR_ENDPOINT as string | undefined, vlmEndpoint: import.meta.env.VITE_VLM_ENDPOINT as string | undefined, searchEndpoint: import.meta.env.VITE_SEARCH_ENDPOINT as string | undefined, maskEndpoint: import.meta.env.VITE_MASK_ENDPOINT as string | undefined, openaiVlmEndpoint: import.meta.env.VITE_OPENAI_VLM_ENDPOINT as string | undefined, openaiVlmKey: import.meta.env.VITE_OPENAI_VLM_KEY as string | undefined, searxngEndpoint: import.meta.env.VITE_SEARXNG_ENDPOINT as string | undefined };
 }
