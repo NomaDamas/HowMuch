@@ -32,7 +32,8 @@ export MYPROXY_API_KEY='your-local-key'
 export MYPROXY_BASE_URL='https://proxy.nomadamas.org/v1'
 export MYPROXY_VLM_MODEL='gpt-6.1-terra'
 npm run demo:agent
-```
+# first-time only: npx playwright install chromium
+``
 
 In a second terminal:
 
