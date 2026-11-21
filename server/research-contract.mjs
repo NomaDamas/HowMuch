@@ -5,12 +5,14 @@ const isHttpUrl = (value) => typeof value === 'string' && /^https?:\/\//i.test(v
 
 export function isValidResearchInput(body) {
   if (!body || typeof body !== 'object') return false;
-  if (typeof body.image !== 'string' || !/^data:image\/(jpeg|jpg|png|webp);base64,/i.test(body.image) || body.image.length > 12_000_000) return false;
+  const image = body.image || body.imageDataUrl;
+  if (typeof image !== 'string' || !/^data:image\/(jpeg|jpg|png|webp);base64,/i.test(image) || image.length > 12_000_000) return false;
   const s = body.selection;
   if (!s || !['x', 'y', 'width', 'height'].every((key) => isFiniteNumber(s[key]) && s[key] >= 0 && s[key] <= 1)) return false;
   if (s.width <= 0 || s.height <= 0 || s.x + s.width > 1 || s.y + s.height > 1) return false;
   if (s.polygon !== undefined && (!Array.isArray(s.polygon) || s.polygon.length < 3 || s.polygon.length > 256 || s.polygon.some((p) => !p || !isFiniteNumber(p.x) || !isFiniteNumber(p.y) || p.x < 0 || p.x > 1 || p.y < 0 || p.y > 1))) return false;
-  if (body.cutout !== undefined && (typeof body.cutout !== 'string' || !/^data:image\/(jpeg|jpg|png|webp);base64,/i.test(body.cutout) || body.cutout.length > 12_000_000)) return false;
+  const cutout = body.cutout ?? body.cutoutDataUrl;
+  if (cutout !== undefined && (typeof cutout !== 'string' || !/^data:image\/(jpeg|jpg|png|webp);base64,/i.test(body.cutout) || body.cutout.length > 12_000_000)) return false;
   return true;
 }
 
@@ -27,6 +29,6 @@ export function isValidResearchResult(result) {
 }
 
 export function assertResearchEnvelope(body) {
-  if (!body || body.status !== 'completed' || !isValidResearchResult(body.result)) throw new Error('research_agent_invalid_contract');
+  if (!body || !['completed', 'complete', 'partial', 'no_result'].includes(body.status) || !isValidResearchResult(body.result)) throw new Error('research_agent_invalid_contract');
   return body.result;
 }

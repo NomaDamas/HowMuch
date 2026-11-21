@@ -35,7 +35,7 @@ const server = http.createServer(async (request, response) => {
     if (requestBuckets.size > MAX_BUCKETS) { for (const [key, value] of requestBuckets) if (now - value.startedAt >= RATE_WINDOW_MS) requestBuckets.delete(key); if (requestBuckets.size > MAX_BUCKETS) { const oldest = [...requestBuckets.entries()].sort((a, b) => a[1].startedAt - b[1].startedAt).slice(0, requestBuckets.size - MAX_BUCKETS); oldest.forEach(([key]) => requestBuckets.delete(key)); } }
     const body = await readBody(request);
     if (!isValidResearchInput(body)) return json(response, 400, { error: 'image_and_selection_required' });
-    const payload = { image: body.image, selection: body.selection, locale: body.locale || 'ko-KR' };
+    const payload = { image: body.image || body.imageDataUrl, cutout: body.cutout || body.cutoutDataUrl, selection: body.selection, locale: body.locale || 'ko-KR' };
     const research = await callResearchAgent({ ...payload, cutout: body.cutout });
     if (!research) return json(response, 503, { error: 'agent_unavailable', message: 'Configure RESEARCH_AGENT_ENDPOINT. /api/research never falls back to direct search APIs.' });
     return json(response, 200, research);
