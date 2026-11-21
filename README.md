@@ -31,14 +31,16 @@ Run the agent and API in two terminals. The Myproxy key is read only from the sh
 export MYPROXY_API_KEY='your-local-key'
 export MYPROXY_BASE_URL='https://proxy.nomadamas.org/v1'
 export MYPROXY_VLM_MODEL='gpt-6.1-terra'
+# first-time only
+npx playwright install chromium
 npm run demo:agent
-# first-time only: npx playwright install chromium
 ``
 
 In a second terminal:
 
 ```bash
 export RESEARCH_AGENT_ENDPOINT=http://127.0.0.1:8791/agent/research
+# With the Vite proxy, the phone client uses /api/research and /agent/segment automatically
 npm run demo:api
 ```
 
