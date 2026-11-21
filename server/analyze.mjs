@@ -8,7 +8,7 @@ const server = http.createServer(async (request, response) => {
   if (request.method !== 'POST' || request.url !== '/api/analyze') return json(response, 404, { error: 'not_found' });
   try {
     const body = await readBody(request);
-    if (typeof body.image !== 'string' || !body.selection || typeof body.selection.x !== 'number') return json(response, 400, { error: 'image_and_selection_required' });
+    if (typeof body.image !== 'string' || body.image.length > 12_000_000 || !body.selection || typeof body.selection.x !== 'number' || [body.selection.x,body.selection.y,body.selection.width,body.selection.height].some((value) => typeof value !== 'number' || value < 0 || value > 1)) return json(response, 400, { error: 'image_and_selection_required' });
     const payload = { image: body.image, selection: body.selection, locale: body.locale || 'ko-KR' };
     const [vision, offers, mask] = await Promise.all([call(process.env.VLM_ENDPOINT, { ...payload, task: 'identify-product-no-ocr' }), call(process.env.SEARCH_ENDPOINT, { ...payload, query: body.query || '' }), call(process.env.MASK_ENDPOINT, { ...payload, task: 'segment-object-cutout' })]);
     const demoNow = new Date().toISOString();
