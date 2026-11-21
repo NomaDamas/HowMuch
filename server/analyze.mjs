@@ -16,9 +16,13 @@ const callCommercialVlm = async (payload) => {
   const body = await response.json(); let parsed = {}; try { parsed = JSON.parse(body.choices?.[0]?.message?.content || '{}'); } catch {}
   return { candidates: Array.isArray(parsed.candidates) ? parsed.candidates.filter((candidate) => typeof candidate?.name === 'string' && Number.isFinite(candidate?.confidence) && candidate.confidence >= 0 && candidate.confidence <= 1 && (candidate.attributes === undefined || typeof candidate.attributes === 'object') && (candidate.queries === undefined || Array.isArray(candidate.queries))) : [] };
 };
+const callResearchAgent = async (payload) => {
+  if (!process.env.RESEARCH_AGENT_ENDPOINT) return null;
+  return call(process.env.RESEARCH_AGENT_ENDPOINT, { task: 'multimodal-research-agent', image: payload.image, cutout: payload.cutout, selection: payload.selection, locale: payload.locale, tools: ['visual_search_agent', 'text_search_agent', 'open_page', 'extract_offer', 'compare_offers'] });
+};
 const server = http.createServer(async (request, response) => {
   if (request.method === 'OPTIONS') return json(response, 204, {});
-  if (request.method !== 'POST' || request.url !== '/api/analyze') return json(response, 404, { error: 'not_found' });
+  if (request.method !== 'POST' || !['/api/analyze', '/api/research'].includes(request.url)) return json(response, 404, { error: 'not_found' });
   try {
     const clientKey = (TRUST_PROXY ? request.headers['x-forwarded-for']?.split(',')[0]?.trim() : undefined) || request.socket.remoteAddress || 'anonymous';
     const now = Date.now(); const bucket = requestBuckets.get(clientKey) || { startedAt: now, count: 0 };
@@ -29,6 +33,11 @@ const server = http.createServer(async (request, response) => {
     const body = await readBody(request);
     if (typeof body.image !== 'string' || !/^data:image\/(jpeg|jpg|png|webp);base64,/i.test(body.image) || body.image.length > 12_000_000 || !body.selection || typeof body.selection.x !== 'number' || [body.selection.x,body.selection.y,body.selection.width,body.selection.height].some((value) => typeof value !== 'number' || value < 0 || value > 1)) return json(response, 400, { error: 'image_and_selection_required' });
     const payload = { image: body.image, selection: body.selection, locale: body.locale || 'ko-KR' };
+    if (request.url === '/api/research') {
+      const research = await callResearchAgent({ ...payload, cutout: body.cutout });
+      if (!research) return json(response, 503, { error: 'agent_unavailable', message: 'Configure RESEARCH_AGENT_ENDPOINT; search APIs are not used as a fallback.' });
+      return json(response, 200, research);
+    }
     const [vision, offers, mask] = await Promise.all([(process.env.VLM_ENDPOINT ? call(process.env.VLM_ENDPOINT, { ...payload, task: 'identify-product-no-ocr' }) : callCommercialVlm(payload)), call(process.env.SEARCH_ENDPOINT, { ...payload, query: body.query || '' }), call(process.env.MASK_ENDPOINT, { ...payload, task: 'segment-object-cutout' })]);
     const demoNow = new Date().toISOString();
     if (!process.env.VLM_ENDPOINT && !process.env.OPENAI_API_KEY && !process.env.SEARCH_ENDPOINT && !process.env.MASK_ENDPOINT) {

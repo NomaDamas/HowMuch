@@ -2,18 +2,18 @@
 
 ## Product promise
 
-HowMuch is a mobile-first camera web experience that identifies a selected object, produces a cutout, finds evidence-backed market prices, and places a translucent card beside the object in the live camera view. The web MVP is the acceptance gate for native iOS and Android clients.
+HowMuch is an AGPL multimodal agent product. A user points a phone camera at a specific product or object for 3–5 seconds, long-presses it, or draws around it. HowMuch segments that selection, sends the cutout and surrounding scene to a commercial VLM-led research agent, and renders evidence-backed market prices in a translucent HUD beside the object.
 
 ## Interaction contract
 
-- **Automatic mode:** a local or configured detector proposes an object. The client waits for a stable target, submits one representative frame, and suppresses duplicate requests.
+- **Automatic mode:** no detector is required in the primary path. The client waits 3–5 seconds for a stable visual target, captures a representative frame, and asks segmentation for the selected object. A detector is an optional multi-object fallback only.
 - **Touch/draw mode:** the user taps a nearby candidate or draws a freeform polygon. The polygon is the selection contract; a persistent rectangular bounding box is not the primary UI.
 - **Overlay:** the cutout and card use normalized camera coordinates. The card flips sides at an edge, follows the target while visible, hides after a loss grace period, and returns when the target is reacquired.
 - **Toggle:** Automatic and Touch/draw are visible controls and persist for the session.
 
 ## Identification and search
 
-OCR is excluded. A commercial VLM returns structured category, brand, model, attributes, candidates, search queries, and confidence. Image and shopping search are separate provider adapters. The approved adapter stack is official or affiliate APIs first, then SearXNG, Firecrawl, Crawl4AI, Playwright, and Browser Use only where the target permits access. A price is shown with source URL, merchant, condition, currency, checked time, availability, and confidence.
+OCR is excluded. A commercial VLM returns structured category, brand, model, attributes, candidates, visual context, search queries, and confidence. One multimodal research run receives both the cutout image and surrounding scene, then calls visual search and VLM-generated text search concurrently through agentic web tools. Search APIs are not a fallback product path. Agent browser tools may use permitted visual-search UIs, open pages, inspect screenshots/DOM, and collect evidence. A price is shown with source URL, merchant, condition, currency, checked time, availability, and confidence.
 
 Prices are normalized to the selected locale currency, include shipping when it is explicitly separate, deduplicate by URL, remove extreme outliers, and expose lowest verified price plus median/range when enough evidence exists. A missing result is shown as missing; the system never invents a price.
 
@@ -21,10 +21,16 @@ Prices are normalized to the selected locale currency, include shipping when it 
 
 Frames are ephemeral by default. Anonymous telemetry contains mode, latency, outcome, category, and source clicks, never raw frames by default. Person mode is opt-in and playful: style metadata or a fictional game score only. It does not infer attractiveness, body value, body measurements, age, health, race, or other sensitive traits.
 
+## Agent and integration contract
+
+The core exposes `visual_search(imageContext)`, `text_search(queries, imageContext)`, `open_page(url)`, `extract_offer(page)`, and `compare_offers(offers)` as agent tools. REST/OpenAPI, MCP, SSE/WebSocket jobs, TypeScript/Python SDKs, and QR pairing use the same contracts. Browser Use or an equivalent agent runtime is a tool implementation, not a separate user flow.
+
+Every distributed UI shows `HowMuch by NomaDamas`.
+
 ## Delivery gates
 
 1. Local web demo with camera fallback, both selection modes, cutout, anchored card, and deterministic mock providers.
-2. One commercial VLM and one permitted shopping/search adapter with evidence-backed prices.
+2. One commercial VLM-led agent run that concurrently performs visual and text web research with evidence-backed prices; no search API fallback.
 3. Produce, apparel, electronics, and an unbranded-object pilot.
 4. Hardening: tracking lifecycle, retries, timeouts, rate limits, privacy, accessibility, and mobile Safari/Chrome smoke tests.
 5. Native ARKit/ARCore work begins only after the web gate passes.

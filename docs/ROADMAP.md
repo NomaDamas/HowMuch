@@ -3,7 +3,7 @@
 
 ## Product outcome
 
-HowMuch opens a camera-first web experience. A user points at a product, food, clothing, or other object; the system identifies the selected object, creates a cutout, finds current market prices, and anchors a translucent information card beside the object in the live camera view. The card follows the object while tracked and disappears when the object leaves view. Automatic and touch/draw selection are toggles. The web MVP is the validation gate before native iOS/Android work.
+HowMuch is an AGPL multimodal research agent. A user points at a specific product or object for 3–5 seconds, long-presses it, or draws around it; the system segments only that selection, sends the cutout plus surrounding scene to a commercial VLM-led agent, performs visual and VLM-generated text research concurrently through agentic web tools, and anchors a translucent HUD beside the object. The HUD follows visibility, disappears when the object is not visible, and returns on reacquisition.
 
 ## Guardrails
 
@@ -24,7 +24,7 @@ The MVP uses proven, maintained projects as adapters rather than inventing a cra
 - **SearXNG** (`searxng/searxng`, 10k+): self-hosted metasearch adapter, including image/shopping-capable engines configured by deployment.
 - **Playwright** (`microsoft/playwright`, 70k+): deterministic browser automation for screenshot evidence in approved flows and local end-to-end tests.
 
-The search orchestration order is: official/affiliate API → SearXNG or Firecrawl structured result → Crawl4AI extraction → Browser Use/Playwright screenshot evidence with the VLM. Every adapter returns source URL, timestamp, merchant, condition and price; no result is shown as a verified lowest price without evidence.
+Agent-only research is the product path: visual-search UI tools and VLM-generated text-search tools run concurrently in one research run, then agent browser tools open pages and collect evidence. Search APIs are deliberately excluded as a fallback. Every tool result returns source URL, timestamp, merchant, condition and price; no result is shown as a verified lowest price without evidence.
 
 ## Architecture
 
