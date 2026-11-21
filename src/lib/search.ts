@@ -5,10 +5,26 @@ export interface VlmProvider {
 }
 
 export interface SearchProvider {
-  search(query: string, opts?: { locale?: string }): Promise<PriceOffer[]>;
+  search(query: string, opts?: { locale?: string; imageDataUrl?: string }): Promise<PriceOffer[]>;
 }
 export interface MaskProvider { segment(input:{imageDataUrl:string;selection:NormalizedSelection}):Promise<{maskDataUrl?:string;bounds:NormalizedSelection}>; }
-export class DemoMaskProvider implements MaskProvider { async segment(input:{imageDataUrl:string;selection:NormalizedSelection}){ return {bounds:input.selection}; } }
+export interface DetectorProvider { detect(input:{imageDataUrl:string}):Promise<NormalizedSelection[]>; }
+export function needsLocalMask(maskDataUrl: string | undefined, sourceImage: string): boolean { return !maskDataUrl || maskDataUrl === sourceImage; }
+export function isValidCandidate(candidate: Partial<ProductCandidate>): boolean {
+  return typeof candidate?.name === 'string' && candidate.name.length > 0 && Number.isFinite(candidate.confidence) && candidate.confidence >= 0 && candidate.confidence <= 1 && (candidate.attributes === undefined || typeof candidate.attributes === 'object') && (candidate.queries === undefined || Array.isArray(candidate.queries));
+}
+
+export function isValidOffer(offer: Partial<PriceOffer>): boolean {
+  return Boolean(offer.url && offer.source && offer.checkedAt && offer.currency && offer.condition && Number.isFinite(offer.price) && offer.price > 0 && Number.isFinite(offer.confidence) && offer.confidence >= 0 && offer.confidence <= 1);
+}
+
+export class DemoDetectorProvider implements DetectorProvider { async detect(){ const x=.41,y=.43,w=.18,h=.14; const points=[]; for(let i=0;i<16;i++){const a=(Math.PI*2*i)/16; points.push({x:x+w/2+Math.cos(a)*w/2,y:y+h/2+Math.sin(a)*h/2});} return [{x,y,width:w,height:h,polygon:points}]; } }
+export class DemoMaskProvider implements MaskProvider { async segment(input:{imageDataUrl:string;selection:NormalizedSelection}){
+  if (typeof document === 'undefined' || !input.imageDataUrl.startsWith('data:image')) return {bounds:input.selection,maskDataUrl:input.imageDataUrl};
+  const image = new Image(); image.src = input.imageDataUrl; await new Promise((resolve) => { image.onload = resolve; image.onerror = resolve; });
+  const canvas = document.createElement('canvas'); canvas.width = image.naturalWidth || 360; canvas.height = image.naturalHeight || 280; const context = canvas.getContext('2d');
+  if (!context) return {bounds:input.selection,maskDataUrl:input.imageDataUrl}; context.clearRect(0, 0, canvas.width, canvas.height); context.save(); const polygon = input.selection.polygon || []; if (polygon.length > 2) { context.beginPath(); context.moveTo(polygon[0].x * canvas.width, polygon[0].y * canvas.height); polygon.slice(1).forEach((point) => context.lineTo(point.x * canvas.width, point.y * canvas.height)); context.closePath(); context.clip(); } context.drawImage(image, 0, 0, canvas.width, canvas.height); context.restore(); return {bounds:input.selection,maskDataUrl:canvas.toDataURL('image/png')};
+} }
 
 /** Deterministic fallback keeps the local demo usable without API keys. */
 export class DemoVlmProvider implements VlmProvider {
@@ -36,22 +52,54 @@ export interface AnalyzeInput {
   locale?: string;
   vlm?: VlmProvider;
   search?: SearchProvider;
+  mask?: MaskProvider;
+  displaySelection?: NormalizedSelection;
 }
 
 export async function analyzeObject(input: AnalyzeInput): Promise<ProductInsight> {
   const vlm = input.vlm ?? new DemoVlmProvider();
   const search = input.search ?? new DemoSearchProvider();
+  const mask = input.mask ?? new DemoMaskProvider();
   const candidates = await vlm.identify({ imageDataUrl: input.imageDataUrl, selection: input.selection });
+  let segmentation = await mask.segment({ imageDataUrl: input.imageDataUrl, selection: input.selection });
+  if (needsLocalMask(segmentation.maskDataUrl, input.imageDataUrl)) { const localMask = new DemoMaskProvider(); segmentation = await localMask.segment({ imageDataUrl: input.imageDataUrl, selection: input.selection }); }
   const candidate = candidates[0] ?? { name: '알 수 없는 물체', confidence: 0.2 };
-  const offers = await search.search([candidate.brand, candidate.name].filter(Boolean).join(' '), { locale: input.locale ?? 'ko-KR' });
-  const deduped = Array.from(new Map(offers.map((offer) => [offer.url, offer])).values());
-  const newPrices = deduped.filter((o) => o.condition === 'new' && o.availability !== 'out_of_stock').map((o) => o.price);
-  const usedPrices = deduped.filter((o) => o.condition === 'used').map((o) => o.price);
+  const query = (candidate.queries?.[0] || [candidate.brand, candidate.model, candidate.name].filter(Boolean).join(' '));
+  const offers = await search.search(query, { locale: input.locale ?? 'ko-KR', imageDataUrl: input.imageDataUrl });
+  const deduped = normalizeOffers(offers, input.locale ?? 'ko-KR');
+  const newPrices = deduped.filter((o) => o.condition === 'new' && o.availability !== 'out_of_stock').map((o) => o.normalizedPrice ?? o.price);
+  const usedPrices = deduped.filter((o) => o.condition === 'used').map((o) => o.normalizedPrice ?? o.price);
+  const priceSummary = summarizePrices(newPrices, deduped.filter((o) => o.condition === 'new').map((o) => o.confidence));
   return {
-    id: crypto.randomUUID(), candidate, offers:deduped,
+    id: globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`, candidate, offers:deduped,
+    cutoutDataUrl: segmentation.maskDataUrl,
+    cutoutBounds: input.displaySelection ? { x: input.displaySelection.x + segmentation.bounds.x * input.displaySelection.width, y: input.displaySelection.y + segmentation.bounds.y * input.displaySelection.height, width: segmentation.bounds.width * input.displaySelection.width, height: segmentation.bounds.height * input.displaySelection.height } : segmentation.bounds,
+    cutoutPolygon: input.selection.polygon,
     lowestNew: newPrices.length ? Math.min(...newPrices) : undefined,
     usedRange: usedPrices.length ? { min: Math.min(...usedPrices), max: Math.max(...usedPrices) } : undefined,
+    priceSummary,
     confidence: candidate.confidence, checkedAt: new Date().toISOString(),
-    anchor: { x: Math.min(0.96, input.selection.x + input.selection.width + 0.02), y: input.selection.y + input.selection.height / 2 }
+    anchor: { x: Math.min(0.96, (input.displaySelection ?? input.selection).x + (input.displaySelection ?? input.selection).width + 0.02), y: (input.displaySelection ?? input.selection).y + (input.displaySelection ?? input.selection).height / 2 },
+    displaySelection: input.displaySelection ?? input.selection,
+    currency: deduped[0]?.currency
   };
+}
+
+const FX_TO_KRW: Record<string, number> = { KRW: 1, USD: 1380, JPY: 9.2, EUR: 1490 };
+
+export function normalizeOffers(offers: PriceOffer[], _locale = 'ko-KR'): PriceOffer[] {
+  const valid = offers.filter((offer) => isValidOffer(offer) && FX_TO_KRW[offer.currency])
+    .map((offer) => ({ ...offer, normalizedPrice: Math.round((offer.price + (offer.shippingIncluded === false ? (offer.shipping ?? 0) : 0)) * FX_TO_KRW[offer.currency]) }));
+  const byUrl = Array.from(new Map(valid.map((offer) => [offer.url, offer])).values());
+  if (byUrl.length < 4) return byUrl;
+  const prices = byUrl.map((offer) => offer.normalizedPrice ?? offer.price).sort((a, b) => a - b);
+  const median = prices[Math.floor(prices.length / 2)];
+  return byUrl.filter((offer) => (offer.normalizedPrice ?? offer.price) <= median * 5 && (offer.normalizedPrice ?? offer.price) >= median / 5);
+}
+
+function summarizePrices(prices: number[], confidences: number[]) {
+  if (!prices.length) return undefined;
+  const sorted = [...prices].sort((a, b) => a - b);
+  const median = sorted[Math.floor(sorted.length / 2)];
+  return { lowest: sorted[0], median, range: { min: sorted[0], max: sorted[sorted.length - 1] }, currency: 'KRW' as const, confidence: confidences.length ? confidences.reduce((a, b) => a + b, 0) / confidences.length : 0 };
 }

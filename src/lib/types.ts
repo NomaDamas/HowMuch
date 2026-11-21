@@ -14,6 +14,9 @@ export interface ProductCandidate {
   category?: string;
   confidence: number;
   imageUrl?: string;
+  model?: string;
+  attributes?: Record<string, string>;
+  queries?: string[];
 }
 
 export interface PriceOffer {
@@ -26,12 +29,17 @@ export interface PriceOffer {
   checkedAt: string;
   confidence: number;
   availability?: 'in_stock' | 'out_of_stock' | 'unknown';
+  shipping?: number;
+  shippingIncluded?: boolean;
+  normalizedPrice?: number;
 }
 
 export interface ProductInsight {
   id: string;
   candidate: ProductCandidate;
   cutoutDataUrl?: string;
+  cutoutBounds?: NormalizedSelection;
+  cutoutPolygon?: Array<{ x: number; y: number }>;
   anchor: { x: number; y: number };
   offers: PriceOffer[];
   lowestNew?: number;
@@ -39,4 +47,13 @@ export interface ProductInsight {
   confidence: number;
   checkedAt: string;
   note?: string;
+  displaySelection?: NormalizedSelection;
+  currency?: PriceOffer['currency'];
+  priceSummary?: {
+    lowest: number;
+    median?: number;
+    range?: { min: number; max: number };
+    currency: 'KRW';
+    confidence: number;
+  };
 }
