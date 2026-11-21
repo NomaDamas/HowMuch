@@ -34,7 +34,7 @@ export MYPROXY_VLM_MODEL='gpt-6.1-terra'
 # first-time only
 npx playwright install chromium
 npm run demo:agent
-``
+```
 
 In a second terminal:
 
