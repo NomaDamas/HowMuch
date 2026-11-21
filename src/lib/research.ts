@@ -28,6 +28,8 @@ export interface ResearchResult {
   startedAt: string;
   completedAt: string;
   tools: string[];
+  status?: 'complete' | 'completed' | 'partial' | 'no_result' | 'error';
+  queries?: string[];
 }
 
 export interface ResearchAgentProvider {
