@@ -21,9 +21,9 @@ export class DemoSearchProvider implements SearchProvider {
     const now = new Date().toISOString();
     const encoded = encodeURIComponent(query);
     return [
-      { source: '네이버 쇼핑', title: `${query} 새상품`, price: 129000, currency: 'KRW', condition: 'new', url: `https://search.shopping.naver.com/search/all?query=${encoded}`, checkedAt: now },
-      { source: '다나와', title: `${query} 가격비교`, price: 139000, currency: 'KRW', condition: 'new', url: `https://search.danawa.com/dsearch.php?query=${encoded}`, checkedAt: now },
-      { source: '중고마켓', title: `${query} 중고`, price: 89000, currency: 'KRW', condition: 'used', url: `https://search.naver.com/search.naver?query=${encoded}+중고`, checkedAt: now }
+      { source: '네이버 쇼핑', title: `${query} 새상품`, price: 129000, currency: 'KRW', condition: 'new', availability:'in_stock', confidence:.88, url: `https://search.shopping.naver.com/search/all?query=${encoded}`, checkedAt: now },
+      { source: '다나와', title: `${query} 가격비교`, price: 139000, currency: 'KRW', condition: 'new', availability:'in_stock', confidence:.84, url: `https://search.danawa.com/dsearch.php?query=${encoded}`, checkedAt: now },
+      { source: '중고마켓', title: `${query} 중고`, price: 89000, currency: 'KRW', condition: 'used', availability:'unknown', confidence:.72, url: `https://search.naver.com/search.naver?query=${encoded}+중고`, checkedAt: now }
     ];
   }
 }

@@ -24,6 +24,8 @@ export interface PriceOffer {
   condition: 'new' | 'used' | 'unknown';
   url: string;
   checkedAt: string;
+  confidence: number;
+  availability?: 'in_stock' | 'out_of_stock' | 'unknown';
 }
 
 export interface ProductInsight {
