@@ -9,6 +9,14 @@ export interface SearchProvider {
 }
 export interface MaskProvider { segment(input:{imageDataUrl:string;selection:NormalizedSelection}):Promise<{maskDataUrl?:string;bounds:NormalizedSelection}>; }
 export interface DetectorProvider { detect(input:{imageDataUrl:string}):Promise<NormalizedSelection[]>; }
+export function isValidCandidate(candidate: Partial<ProductCandidate>): boolean {
+  return typeof candidate?.name === 'string' && candidate.name.length > 0 && Number.isFinite(candidate.confidence) && candidate.confidence >= 0 && candidate.confidence <= 1 && (candidate.attributes === undefined || typeof candidate.attributes === 'object') && (candidate.queries === undefined || Array.isArray(candidate.queries));
+}
+
+export function isValidOffer(offer: Partial<PriceOffer>): boolean {
+  return Boolean(offer.url && offer.source && offer.checkedAt && offer.currency && offer.condition && Number.isFinite(offer.price) && offer.price > 0 && Number.isFinite(offer.confidence) && offer.confidence >= 0 && offer.confidence <= 1);
+}
+
 export class DemoDetectorProvider implements DetectorProvider { async detect(){ const x=.41,y=.43,w=.18,h=.14; const points=[]; for(let i=0;i<16;i++){const a=(Math.PI*2*i)/16; points.push({x:x+w/2+Math.cos(a)*w/2,y:y+h/2+Math.sin(a)*h/2});} return [{x,y,width:w,height:h,polygon:points}]; } }
 export class DemoMaskProvider implements MaskProvider { async segment(input:{imageDataUrl:string;selection:NormalizedSelection}){ // The local fallback preserves real camera pixels; the polygon clip in the UI supplies the visible cutout boundary.
   return {bounds:input.selection,maskDataUrl:input.imageDataUrl};
@@ -75,7 +83,7 @@ export async function analyzeObject(input: AnalyzeInput): Promise<ProductInsight
 const FX_TO_KRW: Record<string, number> = { KRW: 1, USD: 1380, JPY: 9.2, EUR: 1490 };
 
 export function normalizeOffers(offers: PriceOffer[], _locale = 'ko-KR'): PriceOffer[] {
-  const valid = offers.filter((offer) => Boolean(offer.url && offer.source && offer.checkedAt && offer.currency && offer.condition && Number.isFinite(offer.price) && offer.price > 0 && Number.isFinite(offer.confidence) && offer.confidence >= 0 && offer.confidence <= 1 && FX_TO_KRW[offer.currency]))
+  const valid = offers.filter((offer) => isValidOffer(offer) && FX_TO_KRW[offer.currency])
     .map((offer) => ({ ...offer, normalizedPrice: Math.round((offer.price + (offer.shippingIncluded === false ? (offer.shipping ?? 0) : 0)) * FX_TO_KRW[offer.currency]) }));
   const byUrl = Array.from(new Map(valid.map((offer) => [offer.url, offer])).values());
   if (byUrl.length < 4) return byUrl;
