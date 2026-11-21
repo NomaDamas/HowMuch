@@ -36,7 +36,7 @@ const server = http.createServer(async (request, response) => {
     const body = await readBody(request);
     if (!isValidResearchInput(body)) return json(response, 400, { error: 'image_and_selection_required' });
     const payload = { image: body.image || body.imageDataUrl, cutout: body.cutout || body.cutoutDataUrl, selection: body.selection, locale: body.locale || 'ko-KR' };
-    const research = await callResearchAgent({ ...payload, cutout: body.cutout });
+    const research = await callResearchAgent(payload);
     if (!research) return json(response, 503, { error: 'agent_unavailable', message: 'Configure RESEARCH_AGENT_ENDPOINT. /api/research never falls back to direct search APIs.' });
     return json(response, 200, research);
   } catch (error) { return json(response, 502, { error: error instanceof Error ? error.message : 'provider_error' }); }
