@@ -30,7 +30,7 @@ export class OpenAICompatibleVlmProvider implements VlmProvider {
     const response = await fetch(this.endpoint, { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${this.apiKey}` }, body: JSON.stringify({ model: this.model, temperature: 0, response_format: { type: 'json_object' }, messages: [{ role: 'user', content: [{ type: 'text', text: 'Identify the selected object for shopping. Do not use OCR. Return JSON with candidates: [{name, brand?, category?, confidence}].' }, { type: 'image_url', image_url: { url: input.imageDataUrl } }] }] }) });
     if (!response.ok) throw new Error(`Commercial VLM failed: ${response.status}`);
     const body = await response.json() as { choices?: Array<{ message?: { content?: string } }> };
-    try { const parsed = JSON.parse(body.choices?.[0]?.message?.content || '{}'); return Array.isArray(parsed.candidates) ? parsed.candidates.filter((candidate: ProductCandidate) => typeof candidate?.name === 'string' && Number.isFinite(candidate?.confidence)) : []; } catch { return []; }
+    try { const parsed = JSON.parse(body.choices?.[0]?.message?.content || '{}'); return Array.isArray(parsed.candidates) ? parsed.candidates.filter((candidate: ProductCandidate) => typeof candidate?.name === 'string' && Number.isFinite(candidate?.confidence) && candidate.confidence >= 0 && candidate.confidence <= 1) : []; } catch { return []; }
   }
 }
 
@@ -41,7 +41,7 @@ export class SearxngSearchProvider implements SearchProvider {
     const url = new URL(this.endpoint); url.searchParams.set('q', query); url.searchParams.set('format', 'json'); url.searchParams.set('language', opts?.locale || 'ko-KR');
     const response = await fetch(url); if (!response.ok) throw new Error(`SearXNG failed: ${response.status}`);
     const body = await response.json() as { results?: Array<{ title?: string; url?: string; content?: string }> }; const checkedAt = new Date().toISOString();
-    return (body.results || []).filter((item) => item.url && item.title).slice(0, 10).map((item) => ({ source: new URL(item.url!).hostname, title: item.title!, price: Number.NaN, currency: 'KRW' as const, condition: 'unknown' as const, url: item.url!, checkedAt, confidence: .35 } as PriceOffer));
+    return (body.results || []).filter((item) => item.url && item.title).slice(0, 10).map((item) => { const text = `${item.title} ${item.content || ''}`; const match = text.match(/(?:₩|KRW|원)\s*([\d,]+)|([\d,]+)\s*(?:원|KRW)/i); const price = Number((match?.[1] || match?.[2] || '').replace(/,/g, '')); return { source: new URL(item.url!).hostname, title: item.title!, price, currency: 'KRW' as const, condition: 'unknown' as const, url: item.url!, checkedAt, confidence: Number.isFinite(price) && price > 0 ? .55 : 0 } as PriceOffer; }).filter((offer) => offer.confidence > 0);
   }
 }
 
@@ -69,5 +69,5 @@ export class HttpAnalyzeProvider implements VlmProvider, SearchProvider, MaskPro
 }
 
 export function providerConfig() {
-  return { analyzeEndpoint: import.meta.env.VITE_ANALYZE_ENDPOINT as string | undefined, detectorEndpoint: import.meta.env.VITE_DETECTOR_ENDPOINT as string | undefined, vlmEndpoint: import.meta.env.VITE_VLM_ENDPOINT as string | undefined, searchEndpoint: import.meta.env.VITE_SEARCH_ENDPOINT as string | undefined, maskEndpoint: import.meta.env.VITE_MASK_ENDPOINT as string | undefined, openaiVlmEndpoint: import.meta.env.VITE_OPENAI_VLM_ENDPOINT as string | undefined, openaiVlmKey: import.meta.env.VITE_OPENAI_VLM_KEY as string | undefined, searxngEndpoint: import.meta.env.VITE_SEARXNG_ENDPOINT as string | undefined };
+  return { analyzeEndpoint: import.meta.env.VITE_ANALYZE_ENDPOINT as string | undefined, detectorEndpoint: import.meta.env.VITE_DETECTOR_ENDPOINT as string | undefined, vlmEndpoint: import.meta.env.VITE_VLM_ENDPOINT as string | undefined, searchEndpoint: import.meta.env.VITE_SEARCH_ENDPOINT as string | undefined, maskEndpoint: import.meta.env.VITE_MASK_ENDPOINT as string | undefined, searxngEndpoint: import.meta.env.VITE_SEARXNG_ENDPOINT as string | undefined };
 }
