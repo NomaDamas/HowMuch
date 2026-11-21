@@ -25,7 +25,7 @@ Frames are ephemeral by default. Anonymous telemetry contains mode, latency, out
 
 The core exposes `visual_search(imageContext)`, `text_search(queries, imageContext)`, `open_page(url)`, `extract_offer(page)`, and `compare_offers(offers)` as agent tools. REST/OpenAPI, MCP, SSE/WebSocket jobs, TypeScript/Python SDKs, and QR pairing use the same contracts. Browser Use or an equivalent agent runtime is a tool implementation, not a separate user flow.
 
-Every distributed UI shows `HowMuch by NomaDamas`.
+Every distributed UI shows `HowMuch by NomaDamas MinXing`.
 
 ## Delivery gates
 

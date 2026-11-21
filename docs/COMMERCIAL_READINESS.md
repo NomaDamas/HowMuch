@@ -35,6 +35,6 @@ Before enabling a provider in production, record:
 
 ## AGPL network-service obligations
 
-The UI must expose a visible `HowMuch by NomaDamas` identity and a `Source` link to the corresponding source repository or source bundle. Any hosted modified version must provide the corresponding source to users interacting with it over a network, as required by AGPL Section 13. Keep third-party dependencies and notices discoverable.
+The UI must expose a visible `HowMuch by NomaDamas MinXing` identity and a `Source` link to the corresponding source repository or source bundle. Any hosted modified version must provide the corresponding source to users interacting with it over a network, as required by AGPL Section 13. Keep third-party dependencies and notices discoverable.
 
 This document is an engineering checklist, not legal advice. Obtain a legal review before selling access, redistributing provider data, or enabling a new commercial source.
