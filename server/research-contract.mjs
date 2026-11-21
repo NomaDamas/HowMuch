@@ -29,6 +29,6 @@ export function isValidResearchResult(result) {
 }
 
 export function assertResearchEnvelope(body) {
-  if (!body || !['completed', 'complete', 'partial', 'no_result'].includes(body.status) || !isValidResearchResult(body.result)) throw new Error('research_agent_invalid_contract');
+  if (!body || !['completed', 'complete', 'partial', 'no_result', 'error'].includes(body.status) || !isValidResearchResult(body.result)) throw new Error('research_agent_invalid_contract');
   return body.result;
 }
