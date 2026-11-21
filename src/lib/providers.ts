@@ -30,7 +30,15 @@ export class HttpMaskProvider {
     return await response.json() as { maskDataUrl?: string; bounds: typeof input.selection };
   }
 }
+export class HttpAnalyzeProvider implements VlmProvider, SearchProvider, MaskProvider {
+  private cache = new Map<string, { candidates?: ProductCandidate[]; offers?: PriceOffer[]; mask?: { maskDataUrl?: string; bounds: any } }>();
+  constructor(private readonly endpoint: string) {}
+  private async analyze(input: { imageDataUrl: string; selection: any }) { const key = `${input.imageDataUrl.length}:${JSON.stringify(input.selection)}`; const cached = this.cache.get(key); if (cached) return cached; const response = await fetch(this.endpoint, { method:'POST', headers:{'content-type':'application/json'}, body:JSON.stringify({ image:input.imageDataUrl, selection:input.selection }) }); if (!response.ok) throw new Error(`Analyze provider failed: ${response.status}`); const body = await response.json(); this.cache.set(key, body); return body; }
+  async identify(input: { imageDataUrl: string; selection: any }) { return (await this.analyze(input)).candidates || []; }
+  async search(_query: string, opts?: { locale?: string; imageDataUrl?: string }) { return (await this.analyze({ imageDataUrl: opts?.imageDataUrl || '', selection:{x:0,y:0,width:1,height:1} })).offers || []; }
+  async segment(input: { imageDataUrl: string; selection: any }) { const body = await this.analyze(input); return { maskDataUrl: body.maskDataUrl, bounds: body.bounds || input.selection }; }
+}
 
 export function providerConfig() {
-  return { vlmEndpoint: import.meta.env.VITE_VLM_ENDPOINT as string | undefined, searchEndpoint: import.meta.env.VITE_SEARCH_ENDPOINT as string | undefined, maskEndpoint: import.meta.env.VITE_MASK_ENDPOINT as string | undefined };
+  return { analyzeEndpoint: import.meta.env.VITE_ANALYZE_ENDPOINT as string | undefined, vlmEndpoint: import.meta.env.VITE_VLM_ENDPOINT as string | undefined, searchEndpoint: import.meta.env.VITE_SEARCH_ENDPOINT as string | undefined, maskEndpoint: import.meta.env.VITE_MASK_ENDPOINT as string | undefined };
 }
