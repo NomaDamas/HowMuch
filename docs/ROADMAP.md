@@ -12,6 +12,19 @@ HowMuch opens a camera-first web experience. A user points at a product, food, c
 - Search providers are adapters. Use official/permitted APIs or providers; do not bypass anti-bot controls.
 - Camera frames are ephemeral by default. Do not retain faces/raw frames without opt-in.
 - Person mode is playful style metadata only; never infer attractiveness, body value, age, health, race, or other sensitive traits.
+- OCR is intentionally excluded from the product pipeline. Visible text may be returned as an optional field by the commercial VLM, but no OCR engine is deployed.
+
+## Approved open-source search building blocks
+
+The MVP uses proven, maintained projects as adapters rather than inventing a crawler. Repository popularity is a screening signal (checked before implementation); licenses and each provider's terms still govern production use.
+
+- **Browser Use** (`browser-use/browser-use`, 50k+ GitHub stars): browser-agent control for a permitted, user-visible fallback flow. It is never used to bypass bot protection.
+- **Crawl4AI** (`unclecode/crawl4ai`, 50k+): structured extraction for pages that permit crawling; output is evidence, not an authority.
+- **Firecrawl** (`mendableai/firecrawl`, 20k+): hosted/self-hosted search and page extraction adapter when its endpoint and target terms permit use.
+- **SearXNG** (`searxng/searxng`, 10k+): self-hosted metasearch adapter, including image/shopping-capable engines configured by deployment.
+- **Playwright** (`microsoft/playwright`, 70k+): deterministic browser automation for screenshot evidence in approved flows and local end-to-end tests.
+
+The search orchestration order is: official/affiliate API → SearXNG or Firecrawl structured result → Crawl4AI extraction → Browser Use/Playwright screenshot evidence with the VLM. Every adapter returns source URL, timestamp, merchant, condition and price; no result is shown as a verified lowest price without evidence.
 
 ## Architecture
 
