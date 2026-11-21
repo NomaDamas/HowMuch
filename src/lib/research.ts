@@ -6,6 +6,7 @@ export interface ResearchContext {
 }
 
 export interface ResearchOffer {
+  id?: string;
   title: string;
   url: string;
   merchant: string;

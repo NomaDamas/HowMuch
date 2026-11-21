@@ -40,7 +40,7 @@ extract_offer({ page, sourceUrl })
   "status": "complete",
   "candidates": [{"name": "...", "brand": "...", "confidence": 0.84}],
   "offers": [{
-    "title": "...", "url": "https://...", "merchant": "...",
+    "id": "offer-id", "title": "...", "url": "https://...", "merchant": "...",
     "price": 129000, "currency": "KRW", "condition": "new",
     "shipping": 0, "availability": "in_stock",
     "checkedAt": "2026-11-22T00:00:00.000Z",
