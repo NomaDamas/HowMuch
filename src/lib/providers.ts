@@ -27,10 +27,10 @@ export class HttpSearchProvider implements SearchProvider {
 export class OpenAICompatibleVlmProvider implements VlmProvider {
   constructor(private readonly endpoint: string, private readonly apiKey: string, private readonly model = 'gpt-4o-mini') {}
   async identify(input: { imageDataUrl: string; selection: NormalizedSelection }): Promise<ProductCandidate[]> {
-    const response = await fetch(this.endpoint, { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${this.apiKey}` }, body: JSON.stringify({ model: this.model, temperature: 0, response_format: { type: 'json_object' }, messages: [{ role: 'user', content: [{ type: 'text', text: 'Identify the selected object for shopping. Do not use OCR. Return JSON with candidates: [{name, brand?, category?, confidence}].' }, { type: 'image_url', image_url: { url: input.imageDataUrl } }] }] }) });
+    const response = await fetch(this.endpoint, { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${this.apiKey}` }, body: JSON.stringify({ model: this.model, temperature: 0, response_format: { type: 'json_object' }, messages: [{ role: 'user', content: [{ type: 'text', text: 'Identify the selected object for shopping. Do not use OCR. Return JSON with candidates: [{name, brand?, model?, category?, attributes?, queries?, confidence}].' }, { type: 'image_url', image_url: { url: input.imageDataUrl } }] }] }) });
     if (!response.ok) throw new Error(`Commercial VLM failed: ${response.status}`);
     const body = await response.json() as { choices?: Array<{ message?: { content?: string } }> };
-    try { const parsed = JSON.parse(body.choices?.[0]?.message?.content || '{}'); return Array.isArray(parsed.candidates) ? parsed.candidates.filter((candidate: ProductCandidate) => typeof candidate?.name === 'string' && Number.isFinite(candidate?.confidence) && candidate.confidence >= 0 && candidate.confidence <= 1) : []; } catch { return []; }
+    try { const parsed = JSON.parse(body.choices?.[0]?.message?.content || '{}'); return Array.isArray(parsed.candidates) ? parsed.candidates.filter((candidate: ProductCandidate) => typeof candidate?.name === 'string' && Number.isFinite(candidate?.confidence) && candidate.confidence >= 0 && candidate.confidence <= 1 && (candidate.attributes === undefined || typeof candidate.attributes === 'object') && (candidate.queries === undefined || Array.isArray(candidate.queries))) : []; } catch { return []; }
   }
 }
 
@@ -41,7 +41,7 @@ export class SearxngSearchProvider implements SearchProvider {
     const url = new URL(this.endpoint); url.searchParams.set('q', query); url.searchParams.set('format', 'json'); url.searchParams.set('language', opts?.locale || 'ko-KR');
     const response = await fetch(url); if (!response.ok) throw new Error(`SearXNG failed: ${response.status}`);
     const body = await response.json() as { results?: Array<{ title?: string; url?: string; content?: string }> }; const checkedAt = new Date().toISOString();
-    return (body.results || []).filter((item) => item.url && item.title).slice(0, 10).map((item) => { const text = `${item.title} ${item.content || ''}`; const match = text.match(/(?:₩|KRW|원)\s*([\d,]+)|([\d,]+)\s*(?:원|KRW)/i); const price = Number((match?.[1] || match?.[2] || '').replace(/,/g, '')); return { source: new URL(item.url!).hostname, title: item.title!, price, currency: 'KRW' as const, condition: 'new' as const, url: item.url!, checkedAt, availability: 'unknown' as const, confidence: Number.isFinite(price) && price > 0 ? .55 : 0 } as PriceOffer; }).filter((offer) => offer.confidence > 0);
+    return (body.results || []).filter((item) => item.url && item.title).slice(0, 10).map((item) => { const text = `${item.title} ${item.content || ''}`; const match = text.match(/(?:₩|KRW|원)\s*([\d,]+)|([\d,]+)\s*(?:원|KRW)/i); const price = Number((match?.[1] || match?.[2] || '').replace(/,/g, '')); return { source: new URL(item.url!).hostname, title: item.title!, price, currency: 'KRW' as const, condition: /중고|used|second.hand/i.test(text) ? 'used' as const : 'new' as const, url: item.url!, checkedAt, availability: 'unknown' as const, confidence: Number.isFinite(price) && price > 0 ? .55 : 0 } as PriceOffer; }).filter((offer) => offer.confidence > 0);
   }
 }
 
