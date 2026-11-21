@@ -25,7 +25,7 @@ const server = http.createServer(async (request, response) => {
     if (now - bucket.startedAt >= RATE_WINDOW_MS) { bucket.startedAt = now; bucket.count = 0; }
     bucket.count += 1; requestBuckets.set(clientKey, bucket);
     if (bucket.count > RATE_LIMIT) return json(response, 429, { error: 'rate_limited', retryAfterSeconds: Math.ceil((RATE_WINDOW_MS - (now - bucket.startedAt)) / 1000) }, { 'retry-after': String(Math.ceil((RATE_WINDOW_MS - (now - bucket.startedAt)) / 1000)) });
-    if (requestBuckets.size > MAX_BUCKETS) for (const [key, value] of requestBuckets) if (now - value.startedAt >= RATE_WINDOW_MS) requestBuckets.delete(key);
+    if (requestBuckets.size > MAX_BUCKETS) { for (const [key, value] of requestBuckets) if (now - value.startedAt >= RATE_WINDOW_MS) requestBuckets.delete(key); if (requestBuckets.size > MAX_BUCKETS) { const oldest = [...requestBuckets.entries()].sort((a, b) => a[1].startedAt - b[1].startedAt).slice(0, requestBuckets.size - MAX_BUCKETS); oldest.forEach(([key]) => requestBuckets.delete(key)); } }
     const body = await readBody(request);
     if (typeof body.image !== 'string' || !/^data:image\/(jpeg|jpg|png|webp);base64,/i.test(body.image) || body.image.length > 12_000_000 || !body.selection || typeof body.selection.x !== 'number' || [body.selection.x,body.selection.y,body.selection.width,body.selection.height].some((value) => typeof value !== 'number' || value < 0 || value > 1)) return json(response, 400, { error: 'image_and_selection_required' });
     const payload = { image: body.image, selection: body.selection, locale: body.locale || 'ko-KR' };
