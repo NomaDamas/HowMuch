@@ -71,6 +71,18 @@ export class HttpAnalyzeProvider implements VlmProvider, SearchProvider, MaskPro
   async segment(input: { imageDataUrl: string; selection: any }) { const body = await this.analyze(input); return { maskDataUrl: body.maskDataUrl, bounds: body.bounds || input.selection }; }
 }
 
+export class HttpSegmentationProvider {
+  constructor(private readonly endpoint: string) {}
+  async segment(input: { imageDataUrl: string; selection?: any }) {
+    const response = await fetch(this.endpoint, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ image: input.imageDataUrl, selection: input.selection, task: 'segment-selected-object', model: 'sam2-or-equivalent' }) });
+    if (!response.ok) throw new Error(`Segmentation provider failed: ${response.status}`);
+    const body = await response.json() as { selection?: any; maskDataUrl?: string };
+    const next = body.selection;
+    if (!next || !Number.isFinite(next.x) || !Number.isFinite(next.y) || !Number.isFinite(next.width) || !Number.isFinite(next.height) || next.width <= 0 || next.height <= 0 || next.x < 0 || next.y < 0 || next.x + next.width > 1 || next.y + next.height > 1) throw new Error('Segmentation provider returned invalid selection');
+    return { selection: next, maskDataUrl: body.maskDataUrl };
+  }
+}
+
 export class HttpResearchProvider implements ResearchAgentProvider {
   constructor(private readonly endpoint: string) {}
   async research(input: ResearchContext): Promise<ResearchResult> {
@@ -85,5 +97,5 @@ export class HttpResearchProvider implements ResearchAgentProvider {
 }
 
 export function providerConfig() {
-  return { researchEndpoint: import.meta.env.VITE_RESEARCH_ENDPOINT as string | undefined };
+  return { researchEndpoint: import.meta.env.VITE_RESEARCH_ENDPOINT as string | undefined, segmentationEndpoint: import.meta.env.VITE_SEGMENTATION_ENDPOINT as string | undefined };
 }
