@@ -7,6 +7,8 @@ export interface VlmProvider {
 export interface SearchProvider {
   search(query: string, opts?: { locale?: string }): Promise<PriceOffer[]>;
 }
+export interface MaskProvider { segment(input:{imageDataUrl:string;selection:NormalizedSelection}):Promise<{maskDataUrl?:string;bounds:NormalizedSelection}>; }
+export class DemoMaskProvider implements MaskProvider { async segment(input:{imageDataUrl:string;selection:NormalizedSelection}){ return {bounds:input.selection}; } }
 
 /** Deterministic fallback keeps the local demo usable without API keys. */
 export class DemoVlmProvider implements VlmProvider {
@@ -42,10 +44,11 @@ export async function analyzeObject(input: AnalyzeInput): Promise<ProductInsight
   const candidates = await vlm.identify({ imageDataUrl: input.imageDataUrl, selection: input.selection });
   const candidate = candidates[0] ?? { name: '알 수 없는 물체', confidence: 0.2 };
   const offers = await search.search([candidate.brand, candidate.name].filter(Boolean).join(' '), { locale: input.locale ?? 'ko-KR' });
-  const newPrices = offers.filter((o) => o.condition === 'new').map((o) => o.price);
-  const usedPrices = offers.filter((o) => o.condition === 'used').map((o) => o.price);
+  const deduped = Array.from(new Map(offers.map((offer) => [offer.url, offer])).values());
+  const newPrices = deduped.filter((o) => o.condition === 'new' && o.availability !== 'out_of_stock').map((o) => o.price);
+  const usedPrices = deduped.filter((o) => o.condition === 'used').map((o) => o.price);
   return {
-    id: crypto.randomUUID(), candidate, offers,
+    id: crypto.randomUUID(), candidate, offers:deduped,
     lowestNew: newPrices.length ? Math.min(...newPrices) : undefined,
     usedRange: usedPrices.length ? { min: Math.min(...usedPrices), max: Math.max(...usedPrices) } : undefined,
     confidence: candidate.confidence, checkedAt: new Date().toISOString(),
