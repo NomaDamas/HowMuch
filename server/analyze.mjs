@@ -20,7 +20,7 @@ const server = http.createServer(async (request, response) => {
     const payload = { image: body.image, selection: body.selection, locale: body.locale || 'ko-KR' };
     const [vision, offers, mask] = await Promise.all([(process.env.VLM_ENDPOINT ? call(process.env.VLM_ENDPOINT, { ...payload, task: 'identify-product-no-ocr' }) : callCommercialVlm(payload)), call(process.env.SEARCH_ENDPOINT, { ...payload, query: body.query || '' }), call(process.env.MASK_ENDPOINT, { ...payload, task: 'segment-object-cutout' })]);
     const demoNow = new Date().toISOString();
-    if (!process.env.VLM_ENDPOINT && !process.env.SEARCH_ENDPOINT && !process.env.MASK_ENDPOINT) {
+    if (!process.env.VLM_ENDPOINT && !process.env.OPENAI_API_KEY && !process.env.SEARCH_ENDPOINT && !process.env.MASK_ENDPOINT) {
       return json(response, 200, { candidates: [{ name: 'Nike Air Max 97', brand: 'Nike', category: '운동화', confidence: .82 }], offers: [{ source: '네이버 쇼핑', title: 'Nike Air Max 97 새상품', price: 129000, currency: 'KRW', condition: 'new', availability: 'in_stock', confidence: .88, url: 'https://search.shopping.naver.com/search/all?query=Nike%20Air%20Max%2097', checkedAt: demoNow }, { source: '중고마켓', title: 'Nike Air Max 97 중고', price: 89000, currency: 'KRW', condition: 'used', availability: 'unknown', confidence: .72, url: 'https://search.naver.com/search.naver?query=Nike%20Air%20Max%2097%20중고', checkedAt: demoNow }], maskDataUrl: body.image, bounds: { ...body.selection, polygon: Array.isArray(body.selection.polygon) && body.selection.polygon.length > 2 ? body.selection.polygon : fallbackPolygon() }, checkedAt: demoNow });
     }
     const candidates = Array.isArray(vision.candidates) ? vision.candidates : [];
