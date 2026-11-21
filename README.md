@@ -14,7 +14,7 @@ Open the printed localhost URL on a phone or desktop browser. Camera access is o
 
 ## Provider wiring
 
-Copy `.env.example` to `.env.local` and set `VITE_VLM_ENDPOINT` and `VITE_SEARCH_ENDPOINT` to your own server-side proxies. Keep provider secrets on the proxy, never in this browser bundle. The proxy must return the typed contracts in `src/lib/types.ts`, including source URL, checked time, condition, availability, currency and confidence for every offer. OCR is not part of the pipeline.
+Copy `.env.example` to `.env.local`; for the working local proxy set `VITE_ANALYZE_ENDPOINT=http://localhost:8787/api/analyze`. For separate providers, set `VITE_VLM_ENDPOINT`, `VITE_SEARCH_ENDPOINT`, and `VITE_MASK_ENDPOINT` to your own server-side proxies. Keep provider secrets on the proxy, never in this browser bundle. The proxy must return the typed contracts in `src/lib/types.ts`, including source URL, checked time, condition, availability, currency and confidence for every offer. OCR is not part of the pipeline.
 
 ## Validation
 
