@@ -1,6 +1,7 @@
 import type { NormalizedSelection, PriceOffer, ProductCandidate } from './types';
 import type { DetectorProvider } from './search';
 import type { SearchProvider, VlmProvider } from './search';
+import { parseSearxngOffer } from './provider-logic.js';
 
 /** Server-side adapters. Keep API keys out of the browser; proxy these from /api/analyze. */
 export class HttpVlmProvider implements VlmProvider {
@@ -41,7 +42,7 @@ export class SearxngSearchProvider implements SearchProvider {
     const url = new URL(this.endpoint); url.searchParams.set('q', query); url.searchParams.set('format', 'json'); url.searchParams.set('language', opts?.locale || 'ko-KR');
     const response = await fetch(url); if (!response.ok) throw new Error(`SearXNG failed: ${response.status}`);
     const body = await response.json() as { results?: Array<{ title?: string; url?: string; content?: string }> }; const checkedAt = new Date().toISOString();
-    return (body.results || []).filter((item) => item.url && item.title).slice(0, 10).map((item) => { const text = `${item.title} ${item.content || ''}`; const match = text.match(/(?:₩|KRW|원)\s*([\d,]+)|([\d,]+)\s*(?:원|KRW)/i); const price = Number((match?.[1] || match?.[2] || '').replace(/,/g, '')); return { source: new URL(item.url!).hostname, title: item.title!, price, currency: 'KRW' as const, condition: /중고|used|second[- ]hand/i.test(text) ? 'used' as const : 'new' as const, url: item.url!, checkedAt, availability: 'unknown' as const, confidence: Number.isFinite(price) && price > 0 ? .55 : 0 } as PriceOffer; }).filter((offer) => offer.confidence > 0);
+    return (body.results || []).slice(0, 10).map((item) => parseSearxngOffer(item, checkedAt)).filter(Boolean) as PriceOffer[];
   }
 }
 

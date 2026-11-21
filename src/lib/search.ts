@@ -18,8 +18,11 @@ export function isValidOffer(offer: Partial<PriceOffer>): boolean {
 }
 
 export class DemoDetectorProvider implements DetectorProvider { async detect(){ const x=.41,y=.43,w=.18,h=.14; const points=[]; for(let i=0;i<16;i++){const a=(Math.PI*2*i)/16; points.push({x:x+w/2+Math.cos(a)*w/2,y:y+h/2+Math.sin(a)*h/2});} return [{x,y,width:w,height:h,polygon:points}]; } }
-export class DemoMaskProvider implements MaskProvider { async segment(input:{imageDataUrl:string;selection:NormalizedSelection}){ // The local fallback preserves real camera pixels; the polygon clip in the UI supplies the visible cutout boundary.
-  return {bounds:input.selection,maskDataUrl:input.imageDataUrl};
+export class DemoMaskProvider implements MaskProvider { async segment(input:{imageDataUrl:string;selection:NormalizedSelection}){
+  if (typeof document === 'undefined' || !input.imageDataUrl.startsWith('data:image')) return {bounds:input.selection,maskDataUrl:input.imageDataUrl};
+  const image = new Image(); image.src = input.imageDataUrl; await new Promise((resolve) => { image.onload = resolve; image.onerror = resolve; });
+  const canvas = document.createElement('canvas'); canvas.width = image.naturalWidth || 360; canvas.height = image.naturalHeight || 280; const context = canvas.getContext('2d');
+  if (!context) return {bounds:input.selection,maskDataUrl:input.imageDataUrl}; context.clearRect(0, 0, canvas.width, canvas.height); context.save(); const polygon = input.selection.polygon || []; if (polygon.length > 2) { context.beginPath(); context.moveTo(polygon[0].x * canvas.width, polygon[0].y * canvas.height); polygon.slice(1).forEach((point) => context.lineTo(point.x * canvas.width, point.y * canvas.height)); context.closePath(); context.clip(); } context.drawImage(image, 0, 0, canvas.width, canvas.height); context.restore(); return {bounds:input.selection,maskDataUrl:canvas.toDataURL('image/png')};
 } }
 
 /** Deterministic fallback keeps the local demo usable without API keys. */
