@@ -43,7 +43,7 @@ components:
         locale: { type: string }
     Offer:
       type: object
-      required: [id,title,url,merchant,price,currency,condition,checkedAt,evidence,confidence]
+      required: [title,url,merchant,price,currency,condition,checkedAt,evidence,confidence]
       properties:
         id: { type: string }
         title: { type: string }

@@ -1,6 +1,6 @@
 export interface ResearchContext {
   imageDataUrl: string;
-  cutoutDataUrl?: string;
+  cutoutDataUrl: string;
   selection: { x: number; y: number; width: number; height: number; polygon?: Array<{ x: number; y: number }> };
   locale: string;
 }
@@ -29,7 +29,7 @@ export interface ResearchResult {
   startedAt: string;
   completedAt: string;
   tools: string[];
-  status?: 'complete' | 'completed' | 'partial' | 'no_result' | 'error';
+  status: 'complete' | 'completed' | 'partial' | 'no_result' | 'error';
   queries?: string[];
 }
 
