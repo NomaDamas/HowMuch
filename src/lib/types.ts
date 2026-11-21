@@ -33,6 +33,7 @@ export interface ProductInsight {
   candidate: ProductCandidate;
   cutoutDataUrl?: string;
   cutoutBounds?: NormalizedSelection;
+  cutoutPolygon?: Array<{ x: number; y: number }>;
   anchor: { x: number; y: number };
   offers: PriceOffer[];
   lowestNew?: number;

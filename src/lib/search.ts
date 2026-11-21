@@ -55,6 +55,7 @@ export async function analyzeObject(input: AnalyzeInput): Promise<ProductInsight
     id: globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`, candidate, offers:deduped,
     cutoutDataUrl: segmentation.maskDataUrl,
     cutoutBounds: input.displaySelection ? { x: input.displaySelection.x + segmentation.bounds.x * input.displaySelection.width, y: input.displaySelection.y + segmentation.bounds.y * input.displaySelection.height, width: segmentation.bounds.width * input.displaySelection.width, height: segmentation.bounds.height * input.displaySelection.height } : segmentation.bounds,
+    cutoutPolygon: input.displaySelection?.polygon,
     lowestNew: newPrices.length ? Math.min(...newPrices) : undefined,
     usedRange: usedPrices.length ? { min: Math.min(...usedPrices), max: Math.max(...usedPrices) } : undefined,
     confidence: candidate.confidence, checkedAt: new Date().toISOString(),
