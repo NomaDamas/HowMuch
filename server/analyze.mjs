@@ -1,4 +1,5 @@
 import http from 'node:http';
+import { assertResearchEnvelope, isValidResearchInput } from './research-contract.mjs';
 const port = Number(process.env.PORT || 8787);
 const fallbackPolygon = () => Array.from({ length: 16 }, (_, index) => { const angle = Math.PI * 2 * index / 16; return { x: .5 + Math.cos(angle) * .5, y: .5 + Math.sin(angle) * .5 }; });
 const requestBuckets = new Map();
@@ -18,11 +19,13 @@ const callCommercialVlm = async (payload) => {
 };
 const callResearchAgent = async (payload) => {
   if (!process.env.RESEARCH_AGENT_ENDPOINT) return null;
-  return call(process.env.RESEARCH_AGENT_ENDPOINT, { task: 'multimodal-research-agent', image: payload.image, cutout: payload.cutout, selection: payload.selection, locale: payload.locale, tools: ['visual_search_agent', 'text_search_agent', 'open_page', 'extract_offer', 'compare_offers'] });
+  const startedAt = new Date().toISOString();
+  const response = await call(process.env.RESEARCH_AGENT_ENDPOINT, { runtime: 'howmuch-research-v1', task: 'multimodal-research-agent', image: payload.image, cutout: payload.cutout, selection: payload.selection, locale: payload.locale, tools: ['visual_search_agent', 'text_search_agent', 'open_page', 'extract_offer', 'compare_offers'], contract: { status: 'completed', result: 'ResearchResult', evidenceRequired: true, noGuesses: true }, startedAt });
+  return assertResearchEnvelope(response);
 };
 const server = http.createServer(async (request, response) => {
   if (request.method === 'OPTIONS') return json(response, 204, {});
-  if (request.method !== 'POST' || !['/api/analyze', '/api/research'].includes(request.url)) return json(response, 404, { error: 'not_found' });
+  if (request.method !== 'POST' || request.url !== '/api/research') return json(response, 404, { error: 'not_found' });
   try {
     const clientKey = (TRUST_PROXY ? request.headers['x-forwarded-for']?.split(',')[0]?.trim() : undefined) || request.socket.remoteAddress || 'anonymous';
     const now = Date.now(); const bucket = requestBuckets.get(clientKey) || { startedAt: now, count: 0 };
@@ -31,21 +34,11 @@ const server = http.createServer(async (request, response) => {
     if (bucket.count > RATE_LIMIT) return json(response, 429, { error: 'rate_limited', retryAfterSeconds: Math.ceil((RATE_WINDOW_MS - (now - bucket.startedAt)) / 1000) }, { 'retry-after': String(Math.ceil((RATE_WINDOW_MS - (now - bucket.startedAt)) / 1000)) });
     if (requestBuckets.size > MAX_BUCKETS) { for (const [key, value] of requestBuckets) if (now - value.startedAt >= RATE_WINDOW_MS) requestBuckets.delete(key); if (requestBuckets.size > MAX_BUCKETS) { const oldest = [...requestBuckets.entries()].sort((a, b) => a[1].startedAt - b[1].startedAt).slice(0, requestBuckets.size - MAX_BUCKETS); oldest.forEach(([key]) => requestBuckets.delete(key)); } }
     const body = await readBody(request);
-    if (typeof body.image !== 'string' || !/^data:image\/(jpeg|jpg|png|webp);base64,/i.test(body.image) || body.image.length > 12_000_000 || !body.selection || typeof body.selection.x !== 'number' || [body.selection.x,body.selection.y,body.selection.width,body.selection.height].some((value) => typeof value !== 'number' || value < 0 || value > 1)) return json(response, 400, { error: 'image_and_selection_required' });
+    if (!isValidResearchInput(body)) return json(response, 400, { error: 'image_and_selection_required' });
     const payload = { image: body.image, selection: body.selection, locale: body.locale || 'ko-KR' };
-    if (request.url === '/api/research') {
-      const research = await callResearchAgent({ ...payload, cutout: body.cutout });
-      if (!research) return json(response, 503, { error: 'agent_unavailable', message: 'Configure RESEARCH_AGENT_ENDPOINT; search APIs are not used as a fallback.' });
-      return json(response, 200, research);
-    }
-    const [vision, offers, mask] = await Promise.all([(process.env.VLM_ENDPOINT ? call(process.env.VLM_ENDPOINT, { ...payload, task: 'identify-product-no-ocr' }) : callCommercialVlm(payload)), call(process.env.SEARCH_ENDPOINT, { ...payload, query: body.query || '' }), call(process.env.MASK_ENDPOINT, { ...payload, task: 'segment-object-cutout' })]);
-    const demoNow = new Date().toISOString();
-    if (!process.env.VLM_ENDPOINT && !process.env.OPENAI_API_KEY && !process.env.SEARCH_ENDPOINT && !process.env.MASK_ENDPOINT) {
-      return json(response, 200, { candidates: [{ name: 'Nike Air Max 97', brand: 'Nike', category: '운동화', confidence: .82 }], offers: [{ source: '네이버 쇼핑', title: 'Nike Air Max 97 새상품', price: 129000, currency: 'KRW', condition: 'new', availability: 'in_stock', confidence: .88, url: 'https://search.shopping.naver.com/search/all?query=Nike%20Air%20Max%2097', checkedAt: demoNow }, { source: '중고마켓', title: 'Nike Air Max 97 중고', price: 89000, currency: 'KRW', condition: 'used', availability: 'unknown', confidence: .72, url: 'https://search.naver.com/search.naver?query=Nike%20Air%20Max%2097%20중고', checkedAt: demoNow }], maskDataUrl: body.image, bounds: { ...body.selection, polygon: Array.isArray(body.selection.polygon) && body.selection.polygon.length > 2 ? body.selection.polygon : fallbackPolygon() }, checkedAt: demoNow });
-    }
-    const candidates = Array.isArray(vision.candidates) ? vision.candidates : [];
-    const validOffers = Array.isArray(offers.offers) ? offers.offers.filter((offer) => typeof offer?.url === 'string' && offer.url.length > 0 && typeof offer?.source === 'string' && offer.source.length > 0 && typeof offer?.title === 'string' && offer.title.length > 0 && Number.isFinite(offer?.price) && offer.price > 0 && ['KRW','USD','JPY','EUR'].includes(offer?.currency) && ['new','used','unknown'].includes(offer?.condition) && typeof offer?.checkedAt === 'string' && offer.checkedAt.length > 0 && Number.isFinite(offer?.confidence) && offer.confidence >= 0 && offer.confidence <= 1) : [];
-    return json(response, 200, { candidates, offers: validOffers, maskDataUrl: mask?.maskDataUrl, bounds: mask?.bounds || { ...body.selection, polygon: Array.isArray(body.selection.polygon) && body.selection.polygon.length > 2 ? body.selection.polygon : fallbackPolygon() }, checkedAt: new Date().toISOString() });
+    const research = await callResearchAgent({ ...payload, cutout: body.cutout });
+    if (!research) return json(response, 503, { error: 'agent_unavailable', message: 'Configure RESEARCH_AGENT_ENDPOINT. /api/research never falls back to direct search APIs.' });
+    return json(response, 200, research);
   } catch (error) { return json(response, 502, { error: error instanceof Error ? error.message : 'provider_error' }); }
 });
 server.listen(port, () => console.log(`HowMuch analyze API listening on http://localhost:${port}`));
