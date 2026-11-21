@@ -1,4 +1,5 @@
 import type { NormalizedSelection, PriceOffer, ProductCandidate } from './types';
+import type { DetectorProvider } from './search';
 import type { SearchProvider, VlmProvider } from './search';
 
 /** Server-side adapters. Keep API keys out of the browser; proxy these from /api/analyze. */
@@ -30,6 +31,10 @@ export class HttpMaskProvider {
     return await response.json() as { maskDataUrl?: string; bounds: typeof input.selection };
   }
 }
+export class HttpDetectorProvider implements DetectorProvider {
+  constructor(private readonly endpoint: string) {}
+  async detect(input: { imageDataUrl: string }): Promise<NormalizedSelection[]> { const response = await fetch(this.endpoint, { method:'POST', headers:{'content-type':'application/json'}, body:JSON.stringify({ image:input.imageDataUrl, task:'detect-objects' }) }); if (!response.ok) throw new Error(`Detector provider failed: ${response.status}`); const body=await response.json() as { selections?: NormalizedSelection[] }; return Array.isArray(body.selections)?body.selections.filter((selection)=>selection.width>0&&selection.height>0):[]; }
+}
 export class HttpAnalyzeProvider implements VlmProvider, SearchProvider, MaskProvider {
   private cache = new Map<string, { value: any; expires: number }>();
   private inflight = new Map<string, Promise<any>>();
@@ -42,5 +47,5 @@ export class HttpAnalyzeProvider implements VlmProvider, SearchProvider, MaskPro
 }
 
 export function providerConfig() {
-  return { analyzeEndpoint: import.meta.env.VITE_ANALYZE_ENDPOINT as string | undefined, vlmEndpoint: import.meta.env.VITE_VLM_ENDPOINT as string | undefined, searchEndpoint: import.meta.env.VITE_SEARCH_ENDPOINT as string | undefined, maskEndpoint: import.meta.env.VITE_MASK_ENDPOINT as string | undefined };
+  return { analyzeEndpoint: import.meta.env.VITE_ANALYZE_ENDPOINT as string | undefined, detectorEndpoint: import.meta.env.VITE_DETECTOR_ENDPOINT as string | undefined, vlmEndpoint: import.meta.env.VITE_VLM_ENDPOINT as string | undefined, searchEndpoint: import.meta.env.VITE_SEARCH_ENDPOINT as string | undefined, maskEndpoint: import.meta.env.VITE_MASK_ENDPOINT as string | undefined };
 }
