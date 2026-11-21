@@ -1,26 +1,24 @@
-# HowMuch
+# HowMuch by NomaDamas
 
-Camera-first product and market-price lookup prototype. The web MVP supports automatic mode and touch/draw selection, captures a representative frame, sends a normalized selection to the VLM/search provider contract, and renders evidence-backed offers beside the selected object.
+HowMuch is an AGPL multimodal camera experience. Hold a product in view for about 3–5 seconds, or switch to touch/draw mode and select it. The selected object is segmented, sent with its surrounding scene to a commercial VLM-led research agent, and shown with an evidence-backed market range in a translucent HUD beside the object. The HUD hides on tracking loss and returns after reacquisition.
 
 ## Run locally
 
 ```bash
 npm install
+cp .env.example .env.local
 npm run dev
-npm run api # optional provider proxy on :8787
+npm run api
 ```
 
-Open the printed localhost URL on a phone or desktop browser. Camera access is optional in demo mode; the deterministic provider keeps the interaction testable without credentials.
-
-## Provider wiring
-
-Copy `.env.example` to `.env.local`; for the working local proxy set `VITE_ANALYZE_ENDPOINT=http://localhost:8787/api/analyze`. For separate providers, set `VITE_VLM_ENDPOINT`, `VITE_SEARCH_ENDPOINT`, and `VITE_MASK_ENDPOINT` to your own server-side proxies. Keep provider secrets on the proxy, never in this browser bundle. The proxy must return the typed contracts in `src/lib/types.ts`, including source URL, checked time, condition, availability, currency and confidence for every offer. OCR is not part of the pipeline.
+Set `RESEARCH_AGENT_ENDPOINT` on the server and `VITE_RESEARCH_ENDPOINT` in the client. `/api/research` is the only product research route. The agent must operate visual and VLM-generated text research concurrently through permitted browser/MCP tools and return source URLs, evidence, condition, currency, timestamp, and confidence. There is no direct search API or deterministic price fallback.
 
 ## Validation
 
 ```bash
-npm run test
+npm test
 npm run build
+node --check server/analyze.mjs
 ```
 
-Roadmap and issue-level delivery gates are in [`docs/ROADMAP.md`](docs/ROADMAP.md).
+See [`docs/AGENT_RESEARCH.md`](docs/AGENT_RESEARCH.md), [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md), [`docs/ISSUES.md`](docs/ISSUES.md), and [`docs/COMMERCIAL_READINESS.md`](docs/COMMERCIAL_READINESS.md).

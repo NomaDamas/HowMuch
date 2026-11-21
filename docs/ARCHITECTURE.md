@@ -24,10 +24,10 @@ Provider interfaces keep credentials and vendor-specific behavior out of the UI:
 
 - `VisionProvider.identify(image, selection)` returns candidate names, attributes, confidence, and search queries.
 - `MaskProvider.segment(image, selection)` returns a transparent PNG/mask and the refined normalized bounds.
-- `SearchProvider.search(query, image?)` returns raw offers with source, title, price, currency, condition, and URL.
+- `ResearchAgentProvider.research(context)` starts visual and VLM-generated text research concurrently through permitted browser tools and returns evidence-backed offers. A search provider is an internal adapter, not a user-visible fallback path.
 - `PriceAggregator.normalize(offers)` deduplicates listings, converts currency, rejects implausible values, and produces `lowest`, `range`, and a timestamp.
 
-The default development provider is deterministic mock data so localhost works without API keys. Production providers can be selected by environment variables. Never scrape a marketplace by default: prefer an official API or a search API whose terms permit the result; preserve source URLs and the checked-at timestamp.
+The default development provider is deterministic mock data so localhost works without API keys. Production agents can use Browser Use, Playwright, MCP browser tools, or an approved search provider selected by environment variables. Do not bypass authentication, paywalls, robots controls, or marketplace terms. Preserve rendered evidence, source URLs, merchant, availability, and checked-at timestamps.
 
 ## Latency and caching
 
