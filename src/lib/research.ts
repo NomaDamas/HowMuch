@@ -22,8 +22,8 @@ export interface ResearchOffer {
 export interface ResearchResult {
   candidates: Array<{ name: string; brand?: string; model?: string; category?: string; confidence: number }>;
   offers: ResearchOffer[];
-  lowest?: ResearchOffer;
-  highest?: ResearchOffer;
+  lowest?: ResearchOffer | string;
+  highest?: ResearchOffer | string;
   representative?: { min: number; max: number; median: number; currency: string };
   startedAt: string;
   completedAt: string;
