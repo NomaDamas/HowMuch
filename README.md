@@ -7,6 +7,7 @@ Camera-first product and market-price lookup prototype. The web MVP supports aut
 ```bash
 npm install
 npm run dev
+npm run api # optional provider proxy on :8787
 ```
 
 Open the printed localhost URL on a phone or desktop browser. Camera access is optional in demo mode; the deterministic provider keeps the interaction testable without credentials.
