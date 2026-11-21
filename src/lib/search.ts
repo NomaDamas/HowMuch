@@ -9,7 +9,7 @@ export interface SearchProvider {
 }
 export interface MaskProvider { segment(input:{imageDataUrl:string;selection:NormalizedSelection}):Promise<{maskDataUrl?:string;bounds:NormalizedSelection}>; }
 export interface DetectorProvider { detect(input:{imageDataUrl:string}):Promise<NormalizedSelection[]>; }
-export class DemoDetectorProvider implements DetectorProvider { async detect(){ return [{x:.41,y:.43,width:.18,height:.14,polygon:[]}]; } }
+export class DemoDetectorProvider implements DetectorProvider { async detect(){ const x=.41,y=.43,w=.18,h=.14; const points=[]; for(let i=0;i<16;i++){const a=(Math.PI*2*i)/16; points.push({x:x+w/2+Math.cos(a)*w/2,y:y+h/2+Math.sin(a)*h/2});} return [{x,y,width:w,height:h,polygon:points}]; } }
 export class DemoMaskProvider implements MaskProvider { async segment(input:{imageDataUrl:string;selection:NormalizedSelection}){ // The local fallback preserves real camera pixels; the polygon clip in the UI supplies the visible cutout boundary.
   return {bounds:input.selection,maskDataUrl:input.imageDataUrl};
 } }
