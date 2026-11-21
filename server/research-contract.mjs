@@ -10,6 +10,7 @@ export function isValidResearchInput(body) {
   if (!s || !['x', 'y', 'width', 'height'].every((key) => isFiniteNumber(s[key]) && s[key] >= 0 && s[key] <= 1)) return false;
   if (s.width <= 0 || s.height <= 0 || s.x + s.width > 1 || s.y + s.height > 1) return false;
   if (s.polygon !== undefined && (!Array.isArray(s.polygon) || s.polygon.length < 3 || s.polygon.length > 256 || s.polygon.some((p) => !p || !isFiniteNumber(p.x) || !isFiniteNumber(p.y) || p.x < 0 || p.x > 1 || p.y < 0 || p.y > 1))) return false;
+  if (body.cutout !== undefined && (typeof body.cutout !== 'string' || !/^data:image\/(jpeg|jpg|png|webp);base64,/i.test(body.cutout) || body.cutout.length > 12_000_000)) return false;
   return true;
 }
 

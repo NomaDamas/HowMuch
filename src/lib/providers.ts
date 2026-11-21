@@ -2,6 +2,8 @@ import type { NormalizedSelection, PriceOffer, ProductCandidate } from './types'
 import type { DetectorProvider } from './search';
 import type { SearchProvider, VlmProvider } from './search';
 import { parseSearxngOffer } from './provider-logic.js';
+import type { ResearchAgentProvider, ResearchContext, ResearchResult } from './research';
+import { summarizeResearchOffers } from './research';
 
 /** Server-side adapters. Keep API keys out of the browser; proxy these from /api/analyze. */
 export class HttpVlmProvider implements VlmProvider {
@@ -69,6 +71,19 @@ export class HttpAnalyzeProvider implements VlmProvider, SearchProvider, MaskPro
   async segment(input: { imageDataUrl: string; selection: any }) { const body = await this.analyze(input); return { maskDataUrl: body.maskDataUrl, bounds: body.bounds || input.selection }; }
 }
 
+export class HttpResearchProvider implements ResearchAgentProvider {
+  constructor(private readonly endpoint: string) {}
+  async research(input: ResearchContext): Promise<ResearchResult> {
+    const response = await fetch(this.endpoint, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(input) });
+    if (!response.ok) throw new Error(`Research agent failed: ${response.status}`);
+    const envelope = await response.json() as { candidates?: ResearchResult['candidates']; offers?: ResearchResult['offers']; lowest?: ResearchResult['lowest']; highest?: ResearchResult['highest']; representative?: ResearchResult['representative']; startedAt?: string; completedAt?: string; tools?: string[] };
+    if (!Array.isArray(envelope.candidates) || !Array.isArray(envelope.offers) || typeof envelope.startedAt !== 'string' || Number.isNaN(Date.parse(envelope.startedAt)) || typeof envelope.completedAt !== 'string' || Number.isNaN(Date.parse(envelope.completedAt)) || !Array.isArray(envelope.tools) || envelope.tools.length === 0 || envelope.tools.some((tool) => typeof tool !== 'string' || !tool.trim())) throw new Error('Research agent returned an invalid contract');
+    if (envelope.candidates.some((candidate) => !candidate?.name || typeof candidate.name !== 'string' || !Number.isFinite(candidate.confidence) || candidate.confidence < 0 || candidate.confidence > 1)) throw new Error('Research agent returned invalid candidates');
+    if (envelope.offers.some((offer) => !offer?.title || typeof offer.title !== 'string' || !/^https?:\/\//i.test(offer.url) || !offer.merchant || typeof offer.merchant !== 'string' || !Number.isFinite(offer.price) || offer.price <= 0 || !['KRW', 'USD', 'JPY', 'EUR'].includes(offer.currency) || !['new', 'used', 'unknown'].includes(offer.condition) || typeof offer.checkedAt !== 'string' || Number.isNaN(Date.parse(offer.checkedAt)) || !Array.isArray(offer.evidence) || offer.evidence.length === 0 || offer.evidence.some((e) => typeof e !== 'string' || !e.trim()) || !Number.isFinite(offer.confidence) || offer.confidence < 0 || offer.confidence > 1)) throw new Error('Research agent returned invalid offers');
+    return envelope as ResearchResult;
+  }
+}
+
 export function providerConfig() {
-  return { analyzeEndpoint: import.meta.env.VITE_ANALYZE_ENDPOINT as string | undefined, detectorEndpoint: import.meta.env.VITE_DETECTOR_ENDPOINT as string | undefined, vlmEndpoint: import.meta.env.VITE_VLM_ENDPOINT as string | undefined, searchEndpoint: import.meta.env.VITE_SEARCH_ENDPOINT as string | undefined, maskEndpoint: import.meta.env.VITE_MASK_ENDPOINT as string | undefined, searxngEndpoint: import.meta.env.VITE_SEARXNG_ENDPOINT as string | undefined };
+  return { researchEndpoint: import.meta.env.VITE_RESEARCH_ENDPOINT as string | undefined };
 }

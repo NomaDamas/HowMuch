@@ -39,8 +39,17 @@ export function validateResearchContext(input: Partial<ResearchContext>): input 
 }
 
 export function summarizeResearchOffers(offers: ResearchOffer[]) {
-  const valid = offers.filter((offer) => Number.isFinite(offer.price) && offer.price > 0 && offer.url && offer.evidence?.length);
+  const valid = offers.filter((offer) => {
+    if (!offer || typeof offer.title !== 'string' || !offer.title.trim() || typeof offer.url !== 'string' || !/^https?:\/\//i.test(offer.url)) return false;
+    if (typeof offer.merchant !== 'string' || !offer.merchant.trim() || !Number.isFinite(offer.price) || offer.price <= 0) return false;
+    if (!['KRW', 'USD', 'JPY', 'EUR'].includes(offer.currency) || !['new', 'used', 'unknown'].includes(offer.condition)) return false;
+    if (typeof offer.checkedAt !== 'string' || Number.isNaN(Date.parse(offer.checkedAt))) return false;
+    if (!Array.isArray(offer.evidence) || offer.evidence.length === 0 || offer.evidence.some((item) => typeof item !== 'string' || !item.trim())) return false;
+    return Number.isFinite(offer.confidence) && offer.confidence >= 0 && offer.confidence <= 1;
+  });
   if (!valid.length) return {};
+  const currencies = new Set(valid.map((offer) => offer.currency));
+  if (currencies.size !== 1) return {};
   const sorted = [...valid].sort((a, b) => a.price - b.price);
-  return { lowest: sorted[0], highest: sorted[sorted.length - 1], representative: { min: sorted[0].price, max: sorted[sorted.length - 1].price, median: sorted[Math.floor(sorted.length / 2)].price, currency: sorted[Math.floor(sorted.length / 2)].currency } };
+  return { lowest: sorted[0], highest: sorted[sorted.length - 1], representative: { min: sorted[0].price, max: sorted[sorted.length - 1].price, median: sorted[Math.floor(sorted.length / 2)].price, currency: sorted[0].currency } };
 }
