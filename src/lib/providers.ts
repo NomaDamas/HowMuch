@@ -22,6 +22,15 @@ export class HttpSearchProvider implements SearchProvider {
   }
 }
 
+export class HttpMaskProvider {
+  constructor(private readonly endpoint: string, private readonly apiKey?: string) {}
+  async segment(input: { imageDataUrl: string; selection: { x:number; y:number; width:number; height:number; polygon?: Array<{x:number;y:number}> } }) {
+    const response = await fetch(this.endpoint, { method: 'POST', headers: { 'content-type': 'application/json', ...(this.apiKey ? { authorization: `Bearer ${this.apiKey}` } : {}) }, body: JSON.stringify({ image: input.imageDataUrl, selection: input.selection, task: 'segment-object-cutout' }) });
+    if (!response.ok) throw new Error(`Mask provider failed: ${response.status}`);
+    return await response.json() as { maskDataUrl?: string; bounds: typeof input.selection };
+  }
+}
+
 export function providerConfig() {
-  return { vlmEndpoint: import.meta.env.VITE_VLM_ENDPOINT as string | undefined, searchEndpoint: import.meta.env.VITE_SEARCH_ENDPOINT as string | undefined };
+  return { vlmEndpoint: import.meta.env.VITE_VLM_ENDPOINT as string | undefined, searchEndpoint: import.meta.env.VITE_SEARCH_ENDPOINT as string | undefined, maskEndpoint: import.meta.env.VITE_MASK_ENDPOINT as string | undefined };
 }
