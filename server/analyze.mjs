@@ -1,6 +1,9 @@
 import http from 'node:http';
 const port = Number(process.env.PORT || 8787);
 const fallbackPolygon = () => Array.from({ length: 16 }, (_, index) => { const angle = Math.PI * 2 * index / 16; return { x: .5 + Math.cos(angle) * .5, y: .5 + Math.sin(angle) * .5 }; });
+const requestBuckets = new Map();
+const RATE_WINDOW_MS = 60_000;
+const RATE_LIMIT = 30;
 const json = (response, status, body) => { response.writeHead(status, { 'content-type': 'application/json', 'access-control-allow-origin': '*' }); response.end(JSON.stringify(body)); };
 const readBody = (request) => new Promise((resolve, reject) => { let data = ''; request.on('data', (chunk) => { data += chunk; if (data.length > 12_000_000) reject(new Error('payload too large')); }); request.on('end', () => resolve(JSON.parse(data || '{}'))); request.on('error', reject); });
 const call = async (endpoint, payload) => { if (!endpoint) return {}; const controller = new AbortController(); const timer = setTimeout(() => controller.abort(), 15_000); try { const response = await fetch(endpoint, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload), signal: controller.signal }); if (!response.ok) throw new Error(`${endpoint} returned ${response.status}`); return response.json(); } finally { clearTimeout(timer); } };
@@ -15,6 +18,11 @@ const server = http.createServer(async (request, response) => {
   if (request.method === 'OPTIONS') return json(response, 204, {});
   if (request.method !== 'POST' || request.url !== '/api/analyze') return json(response, 404, { error: 'not_found' });
   try {
+    const clientKey = request.headers['x-forwarded-for']?.split(',')[0]?.trim() || request.socket.remoteAddress || 'anonymous';
+    const now = Date.now(); const bucket = requestBuckets.get(clientKey) || { startedAt: now, count: 0 };
+    if (now - bucket.startedAt >= RATE_WINDOW_MS) { bucket.startedAt = now; bucket.count = 0; }
+    bucket.count += 1; requestBuckets.set(clientKey, bucket);
+    if (bucket.count > RATE_LIMIT) return json(response, 429, { error: 'rate_limited', retryAfterSeconds: Math.ceil((RATE_WINDOW_MS - (now - bucket.startedAt)) / 1000) });
     const body = await readBody(request);
     if (typeof body.image !== 'string' || !/^data:image\/(jpeg|jpg|png|webp);base64,/i.test(body.image) || body.image.length > 12_000_000 || !body.selection || typeof body.selection.x !== 'number' || [body.selection.x,body.selection.y,body.selection.width,body.selection.height].some((value) => typeof value !== 'number' || value < 0 || value > 1)) return json(response, 400, { error: 'image_and_selection_required' });
     const payload = { image: body.image, selection: body.selection, locale: body.locale || 'ko-KR' };
