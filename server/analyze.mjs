@@ -20,7 +20,7 @@ const callCommercialVlm = async (payload) => {
 const callResearchAgent = async (payload) => {
   if (!process.env.RESEARCH_AGENT_ENDPOINT) return null;
   const startedAt = new Date().toISOString();
-  const response = await call(process.env.RESEARCH_AGENT_ENDPOINT, { runtime: 'howmuch-research-v1', task: 'multimodal-research-agent', jobId: crypto.randomUUID(), imageContext: { fullFrameDataUrl: payload.image, cutoutDataUrl: payload.cutout, selection: payload.selection }, imageDataUrl: payload.image, cutoutDataUrl: payload.cutout, image: payload.image, cutout: payload.cutout, selection: payload.selection, locale: payload.locale, tools: ['visual_search_agent', 'text_search_agent', 'open_page', 'extract_offer', 'compare_offers'], contract: { status: 'completed', result: 'ResearchResult', evidenceRequired: true, noGuesses: true }, startedAt });
+  const response = await call(process.env.RESEARCH_AGENT_ENDPOINT, { runtime: 'howmuch-research-v1', task: 'multimodal-research-agent', jobId: crypto.randomUUID(), imageContext: { fullFrameDataUrl: payload.image, cutoutDataUrl: payload.cutout, selection: payload.selection }, imageDataUrl: payload.image, cutoutDataUrl: payload.cutout, image: payload.image, cutout: payload.cutout, selection: payload.selection, locale: payload.locale, tools: ['visual_search', 'text_search', 'open_page', 'extract_offer', 'compare_offers'], contract: { status: 'completed', result: 'ResearchResult', evidenceRequired: true, noGuesses: true }, startedAt });
   return assertResearchEnvelope(response);
 };
 const server = http.createServer(async (request, response) => {

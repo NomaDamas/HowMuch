@@ -38,7 +38,7 @@ export interface ResearchAgentProvider {
 }
 
 export function validateResearchContext(input: Partial<ResearchContext>): input is ResearchContext {
-  return typeof input.imageDataUrl === 'string' && input.imageDataUrl.startsWith('data:image/') && typeof input.selection === 'object' && input.selection !== null && [input.selection.x, input.selection.y, input.selection.width, input.selection.height].every((value) => typeof value === 'number' && value >= 0 && value <= 1) && typeof input.locale === 'string' && input.locale.length > 0;
+  return typeof input.imageDataUrl === 'string' && input.imageDataUrl.startsWith('data:image/') && typeof input.selection === 'object' && input.selection !== null && [input.selection.x, input.selection.y, input.selection.width, input.selection.height].every((value) => typeof value === 'number' && value >= 0 && value <= 1) && typeof input.locale === 'string' && input.locale.length > 0 && typeof input.cutoutDataUrl === 'string' && input.cutoutDataUrl.startsWith('data:image/');
 }
 
 export function summarizeResearchOffers(offers: ResearchOffer[]) {

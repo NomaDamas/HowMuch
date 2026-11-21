@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { summarizeResearchOffers, validateResearchContext } from './research.ts';
 
 test('research requires image context and normalized selection', () => {
-  assert.equal(validateResearchContext({ imageDataUrl: 'data:image/png;base64,AA', selection: { x: 0, y: 0, width: 1, height: 1 }, locale: 'ko-KR' }), true);
+  assert.equal(validateResearchContext({ imageDataUrl: 'data:image/png;base64,AA', cutoutDataUrl: 'data:image/png;base64,AA', selection: { x: 0, y: 0, width: 1, height: 1 }, locale: 'ko-KR' }), true);
   assert.equal(validateResearchContext({ imageDataUrl: 'https://example.test/image', selection: { x: 0, y: 0, width: 1, height: 1 }, locale: 'ko-KR' }), false);
 });
 
