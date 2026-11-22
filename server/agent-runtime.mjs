@@ -144,9 +144,9 @@ export async function research(body, deps={}){
   const candidates=person?[{name:'사람',category:'person',confidence:1}]:product?[{name:plan.name.slice(0,160),brand:String(plan.brand||'').slice(0,80),model:String(plan.model||'').slice(0,100),visibleModelEvidence:modelEvidence,category:String(plan.category||'product').slice(0,80),confidence}]:[];
   const proof=identityProof(plan), strict=needsModel(plan);
   if(product && strict && !proof)return {status:'followup_required',pricingMode:'exact_model',candidates,offers:[],tools,queries:[],followup:requestLabel(),startedAt,completedAt:new Date().toISOString()};
-  const queries=product?unique(boundedStrings(plan.queries,3,140).concat(candidates[0].name)).slice(0,2):[];
+  const queries=product?unique([...(strict && proof?[proof.brand+' '+proof.model]:[]),...boundedStrings(plan.queries,3,140),candidates[0].name]).slice(0,2):[];
   const discovery={};
-  const finish=(summary={offers:[]})=>({status:summary.status || (summary.lowest?'complete':summary.offers.length?'partial':'no_result'),candidates,...summary,unitHint:typeof plan.unitHint==='string'?plan.unitHint.slice(0,60):undefined,tools,queries,discovery,startedAt,completedAt:new Date().toISOString()});
+  const finish=(summary={offers:[]})=>({status:summary.status || (summary.lowest?'complete':summary.offers.length?'partial':'no_result'),candidates,...(strict && proof && {identity:proof,pricingMode:'exact_model'}),...summary,unitHint:typeof plan.unitHint==='string'?plan.unitHint.slice(0,60):undefined,tools,queries,discovery,startedAt,completedAt:new Date().toISOString()});
   if (!product || person) return finish();
   deps.onPhase?.({phase:'researching',candidate:candidates[0]});
   if(plan.marketKind==='fresh_produce' || plan.marketKind==='produce'){

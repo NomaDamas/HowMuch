@@ -51,7 +51,10 @@ public final class PlaceActivity extends Activity implements GLSurfaceView.Rende
         if(name==null||label==null){TextView msg=new TextView(this);msg.setText("웹에서 상품의 공간 배치 버튼으로 열어 주세요.");setContentView(msg);return;}
         FrameLayout root=new FrameLayout(this);surface=new GLSurfaceView(this);surface.setEGLContextClientVersion(2);surface.setPreserveEGLContextOnPause(true);surface.setRenderer(this);root.addView(surface);
         card=badge(name+"\n"+label);card.setVisibility(View.INVISIBLE);root.addView(card,new FrameLayout.LayoutParams(-2,-2));
-        hint=badge("카메라 연결 중");FrameLayout.LayoutParams hp=new FrameLayout.LayoutParams(-2,-2,Gravity.BOTTOM|Gravity.CENTER_HORIZONTAL);hp.bottomMargin=dp(46);root.addView(hint,hp);setContentView(root);
+        hint=badge("카메라 연결 중");FrameLayout.LayoutParams hp=new FrameLayout.LayoutParams(-2,-2,Gravity.BOTTOM|Gravity.CENTER_HORIZONTAL);hp.bottomMargin=dp(46);root.addView(hint,hp);
+        TextView credit=badge("HowMuch by NomaDamas MinXing · Source");credit.setTextSize(12);
+        credit.setOnClickListener(v->startActivity(new android.content.Intent(android.content.Intent.ACTION_VIEW,Uri.parse("https://github.com/NomaDamas/HowMuch"))));
+        root.addView(credit,new FrameLayout.LayoutParams(-2,-2,Gravity.BOTTOM|Gravity.CENTER_HORIZONTAL));setContentView(root);
         surface.setOnTouchListener((v,event)->{if(event.getAction()==MotionEvent.ACTION_UP)tap.set(new float[]{event.getX(),event.getY()});return true;});
     }
     private int dp(int n){return Math.round(getResources().getDisplayMetrics().density*n);}

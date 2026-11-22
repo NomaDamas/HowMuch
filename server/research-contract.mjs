@@ -26,7 +26,7 @@ export function isValidResearchResult(result) {
   if (result.tools.length === 0 || result.tools.some((tool) => typeof tool !== 'string' || tool.length === 0)) return false;
   if (result.candidates.some((candidate) => !candidate || typeof candidate.name !== 'string' || candidate.name.length === 0 || !isFiniteNumber(candidate.confidence) || candidate.confidence < 0 || candidate.confidence > 1)) return false;
   if(result.comparables?.length || result.comparableMarket!==undefined)return false;
-  if(result.status==='followup_required'&&(!result.followup?.prompt || result.followup.reason!=='exact_model_not_visible'||result.offers.length||result.lowest||result.produceMarket))return false;
+  if(result.status==='followup_required'&&(typeof result.followup?.prompt!=='string'||!result.followup.prompt.trim() || result.followup.reason!=='exact_model_not_visible'||result.offers.length||result.lowest||result.produceMarket))return false;
   if(result.offers.length&&(result.pricingMode==='exact_model'||needsModel(result.candidates[0]))){
     const i=result.identity || {};
     const proof=identityProof({...i,visibleModelEvidence:i.modelEvidence});
@@ -80,7 +80,7 @@ export function isValidResearchResult(result) {
 
 export function assertResearchEnvelope(body) {
   if (!body || !['completed', 'complete', 'partial', 'no_result', 'followup_required','research_unavailable', 'error'].includes(body.status)) throw new Error('research_agent_invalid_contract');
-  const result = body.result || body;
+  const result = { ...(body.result || body), status: body.status };
   if (!isValidResearchResult(result)) throw new Error('research_agent_invalid_contract');
   return { ...result, status: body.status, ...(Array.isArray(body.queries) ? { queries: body.queries } : {}) };
 }

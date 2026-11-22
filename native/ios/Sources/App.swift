@@ -67,7 +67,7 @@ final class PriceScene: UIViewController, ARSCNViewDelegate {
             let plane=SCNPlane(width:0.19,height:0.071);plane.firstMaterial?.diffuse.contents=texture;plane.firstMaterial?.lightingModel = .constant;plane.firstMaterial?.isDoubleSided=true
             let label=SCNNode(geometry:plane);node.addChildNode(label)
             label.simdWorldPosition=node.simdWorldPosition+SIMD3<Float>(0,0.065,0);label.constraints=[SCNBillboardConstraint()]
-            label.isHidden = !self.hasTracking
+            node.isHidden = !self.hasTracking
         }
     }
     func session(_ session:ARSession, cameraDidChangeTrackingState camera:ARCamera) {
