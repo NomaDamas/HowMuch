@@ -101,7 +101,10 @@ export async function observePage(context,url,onReached=()=>{}){
     const docs=await p.locator('script[type="application/ld+json"]').evaluateAll(ns=>ns.slice(0,24).flatMap(n=>{try{return JSON.parse(n.textContent)}catch{return []}}));
     onReached();
     const structured=productObservations(docs,p.url());
-    if(structured.length)return structured;
+    // Do not resurrect a rejected (e.g., expired) structured offer through less specific metadata.
+    const hasOffer=node=>Array.isArray(node)?node.some(hasOffer):node && typeof node==='object' &&
+      (node.offers || (node['@graph'] && hasOffer(node['@graph'])));
+    if(structured.length || docs.some(hasOffer))return structured;
     const rendered=productObservations(await p.evaluate(renderedProduct),p.url());
     for(const offer of rendered)offer.evidence.push('Product-scoped rendered microdata or product Open Graph price');
     return rendered;
