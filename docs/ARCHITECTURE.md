@@ -1,53 +1,12 @@
-# HowMuch technical architecture
+# Camera and price research
 
-HowMuch is a camera-first product and price lookup experience. The browser MVP deliberately uses a screen-space overlay that behaves like AR: a selected object is cut out, and its card is anchored beside the object while the camera is moving. Native ARKit/ARCore world anchors are a later adapter, not a prerequisite for validating the experience.
+The camera page can track the selected silhouettes in image space. The backend identifies and researches each object independently. An optional immersive session places an already researched price at a user-selected stationary surface. No mobile browser automatically gets a 3D pose from a SAM mask.
 
-## Runtime pipeline
+1. Automatic mode waits for 3.5 seconds of relatively stable frames. A SAM 2.1 worker samples foreground points; when fewer than four masks survive, installed NanoDet weights can suggest extra prompt boxes to SAM. Manual tap, long press and freehand selection skip the detector. Detection proposals are never drawn or supplied as identity evidence.
+2. Each mask gets a dashed contour, a tracking ID and an independent research request. The tracker compares sparse landmarks inside the contour and estimates translation, rotation and scale, with bounded patch search when landmarks are insufficient. It hides a lost track. Refreshes on the same track reuse its result; this is not persistent cross-session recognition.
+3. The commercial VLM sees the isolated cutout and scene, plus an optional separate label close-up from the same item. Apparel and eyewear need visible model and brand evidence. If missing, the interface asks for a close-up and resubmits the original scene and cutout with the extra frame. The label is not uploaded to image search.
+4. For ordinary merchandise the browser agent uploads the cutout to the image-search UI, opens VLM-generated text searches and relevant catalog pages concurrently, and asks the model which product pages to inspect. Price numbers must come from observations on opened merchant pages. Exact-model listings must also match the brand and model. A blocked UI, no match, unknown stock or missing currency data cannot establish the lowest price. “Lowest” means lowest among verified comparable offers in this run, not the entire internet.
+5. For supported fresh produce, KAMIS retail observations provide a reference price for the reported variety, grade, region, quantity, unit, and survey date. A per-ten-apple quote is not the price of one apple in the camera. Unknown products and unsupported commodities can have no result.
+6. The web camera maps image contours to the preview crop and keeps cards inside the viewport. WebXR, ARKit and ARCore allow a user to place a card on a real stationary surface. The card stays there if the item itself is moved. See [placement and hardware checks](WORLD_ANCHORS.md).
 
-```text
-Camera stream -> local selection/tracking -> segmentation-first dashed preview
-             -> representative frame
-             -> identify provider (VLM + image search)
-             -> price provider fan-out -> normalized offers
-             -> mask/cutout provider -> overlay compositor
-```
-
-The UI has two modes:
-
-- **Auto:** a lightweight local detector proposes a target. The client waits for a stable target (several frames with a similar centroid/size), then submits one frame. The tracker keeps the card moving locally; it does not call the network every frame.
-- **Draw:** the user taps or draws around a target. The crop and normalized polygon are sent once. This is the precision path for scenes with several objects.
-
-The overlay uses normalized coordinates (`0..1`) from the camera image. The client maps them to the preview's `object-fit: cover` transform, clamps the card to safe insets, and flips the card to the opposite side when it would cover the target. A tracking loss hides the card after a short grace period; reacquisition shows it again without a new search when the object fingerprint is cached.
-
-The segmentation contour is rendered before identity and price, follows the mask rather than a rectangle, and transitions without a layout jump. A track registry supports multiple objects, while automatic mode admits up to four independently researched stable masks and manual mode only the selected track.
-
-## Provider boundaries
-
-Provider interfaces keep credentials and vendor-specific behavior out of the UI:
-
-- `VisionProvider.identify(image, selection)` returns candidate names, attributes, confidence, and search queries.
-- `MaskProvider.segment(image, selection)` returns a transparent PNG/mask and the refined normalized bounds.
-- `ResearchAgentProvider.research(context)` starts visual and VLM-generated text research concurrently through permitted browser tools and returns evidence-backed offers. Provider errors are fail-closed and return a typed unavailable state; silent API fallback is prohibited.
-- `PriceAggregator.normalize(offers)` deduplicates listings, converts currency, rejects implausible values, and produces `lowest`, `range`, and a timestamp.
-
-The live path uses a local SAM 2.1 worker and a configured commercial VLM that operates bounded browser tools through Playwright. Tests inject fixtures; the camera never silently substitutes mock prices or a search API. Do not bypass authentication, paywalls, robots controls, or marketplace terms. Preserve rendered evidence, source URLs, merchant, availability, and checked-at timestamps.
-
-The integration surface is versioned and shared by REST/OpenAPI, MCP, SSE/WebSocket jobs, TypeScript/Python SDKs, and QR/deep-link pairing. QR tokens are short-lived, scoped to one research job, and never contain provider secrets.
-
-## Latency and caching
-
-The first response is staged: target acknowledgement immediately, identity result next, then price aggregation and mask refinement. Requests are keyed by a perceptual image fingerprint plus locale/category. Cache identity for minutes and prices for a shorter TTL. Abort stale requests when the target changes.
-
-## Privacy and safety
-
-Camera frames are processed in memory by default. Persist only anonymous event metadata unless the user explicitly opts into diagnostics. Person mode is a playful, non-sensitive character card; do not infer attractiveness, body measurements, age, health, or economic value.
-
-## Native migration
-
-When web validation is complete, preserve the provider API and replace only the camera/tracking layer:
-
-- iOS: AVFoundation + Vision/Core ML; ARKit for world anchors when needed.
-- Android: CameraX + ML Kit/MediaPipe; ARCore for world anchors.
-
-The shared response contract (`bbox`, optional polygon/mask, identity, offers, confidence, timestamp) lets the native clients use the same backend and price logic.
-
+The REST API, MCP tool, TypeScript and Python clients pass the same research input. Jobs support SSE replay. Paired phones use a separate trusted HTTPS origin: a single-use invitation gives a short-lived session cookie. No search API, OCR pipeline, embedding store or vector index is used. Camera media and label requests are transient; the optional person game is unrelated to appearance or price.

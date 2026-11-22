@@ -9,7 +9,9 @@ Requires Node 22+, npm, a configured commercial VLM credential, Playwright Chrom
 ```sh
 npm ci
 npx playwright install chromium
-sh scripts/setup-segmentation.sh
+bash scripts/setup-segmentation.sh
+# Optional: add hidden proposals for objects the SAM grid misses (3.8 MB).
+bash scripts/setup-segmentation.sh --detector-only
 # Set VLM_API_KEY, VLM_BASE_URL, and VLM_MODEL in your shell or source the existing local credential.
 npm run demo
 ```
@@ -23,7 +25,7 @@ Open **http://localhost:5173**. The launcher starts the loopback research API (:
 3. On the desktop open **http://localhost:5173 → 설정 → 휴대폰 연결 QR**. Scan with the phone camera, verify the displayed HTTPS origin, and tap **이 서버에 연결**. Allow camera access. The code expires after five minutes and works once; the resulting HttpOnly session lasts ten minutes. Generate a new code or choose **연결 해제** on the desktop to revoke. A direct LAN URL cannot access paid research or segmentation without pairing.
 4. If Safari/Chrome cannot open the link, verify both devices are on the same Wi-Fi, client isolation is disabled, the host firewall allows the private Wi-Fi connection on 8443, and the certificate SAN matches the current LAN IP. Restart the launcher after changing Wi-Fi.
 
-For camera permission, local HTTP works on the desktop only; use trusted HTTPS on the phone. The web overlay follows an image-space track; it is not a measured 3-D world anchor.
+For camera permission, local HTTP works on the desktop only; use trusted HTTPS on the phone. The ordinary overlay follows an image-space track. On eligible WebXR devices you can separately pin a researched price to a stationary surface; see [world anchor behavior](docs/WORLD_ANCHORS.md).
 
 ## Integrate
 

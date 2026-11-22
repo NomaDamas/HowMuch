@@ -1,0 +1,7 @@
+plugins { id 'com.android.application' version '8.7.3' }
+android {
+    namespace 'org.nomadamas.howmuch'
+    compileSdk 35
+    defaultConfig { applicationId 'org.nomadamas.howmuch.ar'; minSdk 24; targetSdk 35; versionCode 1; versionName '0.1' }
+}
+dependencies { implementation 'com.google.ar:core:1.48.0' }

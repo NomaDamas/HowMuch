@@ -41,3 +41,11 @@ The same versioned contracts are exposed through REST/OpenAPI, MCP, SSE/WebSocke
 ## Definition of done
 
 The selected object is visibly cut out and tracked; the card is beside it and disappears/reappears with visibility; automatic and touch/draw modes work; every displayed lowest price has timestamped evidence; provider failures and no-result states are explicit; tests cover schemas, normalization, transforms, lifecycle, and privacy defaults; provider adapters and lifecycle helpers are unit-tested before native expansion; isolated GPT-6.2 Astra High review returns `PASS` before merge.
+
+## Approved refinement: tracking and evidence
+
+> 그리고 Ocr같은건 어차피 Vlm 선에서 모두 정리되니깐 Vlm이 Generalize되어서 더 잘할것들은 하지말고.
+
+> 오히려 농산물이나 이런것들은 오히려 시세를 인터넷 시세를 알거니깐 오히려 좋은데 그냥 안경 같은경우는 그냥 안경 혹은 그냥 점퍼 가격 검색으로 하는건 무의미해. 그 모델에 대한 가격조회까지 되어야 유의미하니깐.
+
+The automatic multi-object proposal model is a measured aid to segmentation only. SAM supplies the actual cutout and outlines. The commercial VLM uses the cutout, scene and optional same-item label to interpret identity; no generic eyewear/apparel price is used. Document produce reference units, region and observation dates explicitly. Keep screen-space motion and stationary spatial placement distinct. The parent issue [#27](https://github.com/NomaDamas/HowMuch/issues/27) links the implementation gates and real-device follow-up.

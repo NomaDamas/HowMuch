@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+<key>CFBundleIdentifier</key><string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+<key>CFBundleName</key><string>HowMuch AR</string>
+<key>CFBundleExecutable</key><string>$(EXECUTABLE_NAME)</string>
+<key>CFBundlePackageType</key><string>APPL</string>
+<key>CFBundleVersion</key><string>1</string><key>CFBundleShortVersionString</key><string>1.0</string>
+<key>LSRequiresIPhoneOS</key><true/><key>UILaunchScreen</key><dict/>
+<key>NSCameraUsageDescription</key><string>선택한 상품 옆의 실제 표면에 가격표를 고정합니다.</string>
+<key>CFBundleURLTypes</key><array><dict><key>CFBundleURLName</key><string>org.nomadamas.howmuch.ar</string><key>CFBundleURLSchemes</key><array><string>howmuch-ar</string></array></dict></array>
+</dict></plist>

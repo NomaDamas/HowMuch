@@ -2,7 +2,7 @@
 import {createInterface} from 'node:readline';
 import {isValidResearchInput} from './research-contract.mjs';
 const name='research_object';
-const schema={type:'object',properties:{imageDataUrl:{type:'string'},cutoutDataUrl:{type:'string'},selection:{type:'object',properties:Object.fromEntries(['x','y','width','height'].map(k=>[k,{type:'number'}])),required:['x','y','width','height']},locale:{type:'string'}},required:['imageDataUrl','cutoutDataUrl','selection','locale']};
+const schema={type:'object',properties:{imageDataUrl:{type:'string'},cutoutDataUrl:{type:'string'},labelDataUrl:{type:'string',description:'Optional close-up of a marking on the same selected object'},region:{type:'string',description:'Optional Korean retail market region'},selection:{type:'object',properties:Object.fromEntries(['x','y','width','height'].map(k=>[k,{type:'number'}])),required:['x','y','width','height']},locale:{type:'string'}},required:['imageDataUrl','cutoutDataUrl','selection','locale']};
 const dest=new URL(process.env.HOWMUCH_API_URL||'http://127.0.0.1:8787');
 if(dest.protocol!=='http:'||!['localhost','127.0.0.1','[::1]'].includes(dest.hostname))throw Error('MCP requires a loopback API');
 async function rpc(req){

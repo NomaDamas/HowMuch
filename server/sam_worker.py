@@ -72,7 +72,7 @@ def encode(mask, rgb):
             "cutoutDataUrl": "data:image/png;base64," + base64.b64encode(out.getvalue()).decode()}
 
 
-def segment(predictor, request):
+def segment(predictor, request, detector=None):
     rgb = read_image(request["image"])
     h, w = rgb.shape[:2]
     predictor.set_image(rgb)
@@ -145,17 +145,46 @@ def segment(predictor, request):
         chosen.append((score, area, mask))
         if len(chosen) == (4 if auto else 1):
             break
+    # Coverage rescue only: keep accepted grid masks; the detector is never a
+    # gate for an unknown product and never runs on point or drawing requests.
+    if auto and detector is not None and len(chosen) < 4:
+        for box in detector.boxes(rgb):
+            x1, y1, x2, y2 = np.rint(box).astype(int)
+            box_area = max(1, (x2-x1)*(y2-y1))
+            if any(mask[y1:y2,x1:x2].sum() / min(box_area, area) > .58
+                   for _,area,mask in chosen):
+                continue
+            masks, scores, _ = predictor.predict(box=box,multimask_output=True)
+            for i in np.argsort(scores)[::-1]:
+                mask = masks[i].astype(bool); area = int(mask.sum())
+                if scores[i] < .72 or not .001*w*h < area < .55*w*h:
+                    continue
+                if mask[y1:y2,x1:x2].sum() < .7 * area or area < .13 * box_area:
+                    continue
+                if any((mask & old).sum() / min(area, old_area) > .66 for _, old_area, old in chosen):
+                    continue
+                chosen.append((float(scores[i]), area, mask))
+                break
+            if len(chosen) == 4:
+                break
     return [selection for _, _, mask in chosen if (selection := encode(mask, rgb))]
 
 
 def main():
     with contextlib.redirect_stdout(sys.stderr):
         predictor = load_model()
+        detector = None
+        if os.environ.get("HOWMUCH_DETECTOR", "auto") != "off" and (ROOT / ".howmuch/sam/nanodet.onnx").is_file():
+            from detector import NanoDet
+            try:
+                detector = NanoDet()
+            except (OSError, ValueError, cv2.error) as err:
+                print("NanoDet not loaded; using SAM grid:", type(err).__name__, file=sys.stderr, flush=True)
     for line in sys.stdin:
         try:
             body = json.loads(line)
             with contextlib.redirect_stdout(sys.stderr), torch.inference_mode():
-                selections = segment(predictor, body)
+                selections = segment(predictor, body, detector)
             result = {"selections": selections, "model": "SAM 2.1 Hiera Tiny"}
         except Exception as exc:
             print("Segment failed:", type(exc).__name__, str(exc)[:180], file=sys.stderr, flush=True)
