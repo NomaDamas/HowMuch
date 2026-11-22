@@ -2,7 +2,7 @@
 // MediaStream. External providers are stubbed; this tests UI, not market coverage.
 import assert from 'node:assert/strict';
 import {chromium} from 'playwright';import {createServer} from 'vite';
-const server=await createServer({server:{host:'127.0.0.1',port:0,hmr:false,watch:null},logLevel:'error'});let browser;
+const server=await createServer({cacheDir:'node_modules/.vite-howmuch-camera',server:{host:'127.0.0.1',port:0,hmr:false,watch:null},logLevel:'error'});let browser;
 try{await server.listen();browser=await chromium.launch();const page=await browser.newPage({viewport:{width:375,height:720}});const errors=[];page.on('pageerror',e=>errors.push(e.message));
 await page.addInitScript(()=>{const c=document.createElement('canvas');c.width=480;c.height=720;const ctx=c.getContext('2d');let lost=false;
  const draw=()=>{if(window.reviewScene){const k=window.reviewScene;ctx.fillStyle='#384858';ctx.fillRect(0,0,480,720);if(k!=='missing'){const moved=k==='moved',x=(moved?.68:.38)*480,y=(moved?.50:.35)*720,w=(moved?.25:.18)*480,h=(moved?.25:.18)*720;for(let i=0;i<4;i++)for(let j=0;j<4;j++){ctx.fillStyle=`rgb(${45+i*50},${25+j*62},${45+(i+j)%3*65})`;ctx.fillRect(x+i*w/4,y+j*h/4,w/4+1,h/4+1)}}return;}ctx.fillStyle=lost?'#e4fbf8':'#102430';ctx.fillRect(0,0,480,720);if(!lost){for(let j=0;j<720;j+=7)for(let i=0;i<480;i+=7){ctx.fillStyle='rgb('+[(i*j+3*i+j)%255,(j*9+i)%255,(i*2+j*3)%255]+')';ctx.fillRect(i,j,7,7)}}};

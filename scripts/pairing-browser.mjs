@@ -25,7 +25,7 @@ try {
  for(let attempt=0;attempt<50;attempt++){try{await new Promise((resolve,reject)=>get(url,{ca},res=>{res.resume();res.statusCode===200?resolve():reject(Error('run npm run build first'))}).on('error',reject));ready=true;break}catch{await new Promise(r=>setTimeout(r,100))}}
  assert.ok(ready,'phone certificate/hostname must validate against local CA');
  const target='http://127.0.0.1:'+desktopPort;
- vite=await viteServer({configFile:false,server:{host:'127.0.0.1',port:0,proxy:Object.fromEntries(['/api','/v1','/agent'].map(path=>[path,{target,changeOrigin:false}]))},logLevel:'error'});await vite.listen();
+ vite=await viteServer({cacheDir:'node_modules/.vite-howmuch-pairing',configFile:false,server:{host:'127.0.0.1',port:0,proxy:Object.fromEntries(['/api','/v1','/agent'].map(path=>[path,{target,changeOrigin:false}]))},logLevel:'error'});await vite.listen();
  browser=await chromium.launch({args:['--ignore-certificate-errors-spki-list='+pin]});
  const desktop=await browser.newPage();desktop.setDefaultTimeout(6000);await desktop.goto('http://127.0.0.1:'+vite.httpServer.address().port);
  await desktop.getByRole('button',{name:'설정',exact:true}).click();

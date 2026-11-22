@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import {createServer} from 'vite';
 import {chromium} from 'playwright';
-const server=await createServer({server:{host:'127.0.0.1',port:0},logLevel:'error'});let browser;
+const server=await createServer({cacheDir:'node_modules/.vite-howmuch-world-anchor',server:{host:'127.0.0.1',port:0},logLevel:'error'});let browser;
 try{
  await server.listen();browser=await chromium.launch({args:['--enable-unsafe-swiftshader']});
  const page=await browser.newPage();await page.goto('http://127.0.0.1:'+server.httpServer.address().port);
@@ -19,7 +19,7 @@ try{
  });
  assert.ok(privacy[0]?.pts.length>=8);assert.deepEqual(privacy[0],privacy[1],'background must not change a single native or WebXR signature sample');
  const errors=[];page.on('pageerror',e=>errors.push(e.message));await page.evaluate(async()=>{
-  const React=(await import('/node_modules/.vite/deps/react.js')).default, {createRoot}=(await import('/node_modules/.vite/deps/react-dom_client.js')).default,Button=(await import('/src/WorldAnchorButton.jsx')).default;
+  const React=(await import('/node_modules/.vite-howmuch-world-anchor/deps/react.js')).default, {createRoot}=(await import('/node_modules/.vite-howmuch-world-anchor/deps/react-dom_client.js')).default,Button=(await import('/src/WorldAnchorButton.jsx')).default;
   const ident=()=>new Float32Array([1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1]),transform=()=>({matrix:ident(),inverse:{matrix:ident()},position:{x:0,y:0,z:-1}});
   const reference=new EventTarget(),space={},anchorSpace={},state={draws:[],hidden:false,hit:true,anchors:0,deletes:0,stops:0,starts:0};
   const orig=WebGLRenderingContext.prototype.drawArrays;WebGLRenderingContext.prototype.drawArrays=function(...args){state.draws.push(args);return orig.apply(this,args)};
