@@ -11,7 +11,7 @@ import cv2
 import numpy as np
 import torch
 from PIL import Image, ImageOps
-from sam2.build_sam import build_sam2
+from sam2.build_sam import build_sam2_video_predictor
 from sam2.sam2_image_predictor import SAM2ImagePredictor
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -26,7 +26,7 @@ def load_model():
     device = os.environ.get("HOWMUCH_SAM_DEVICE",
                             "cuda" if torch.cuda.is_available() else
                             "cpu")
-    model = build_sam2("configs/sam2.1/sam2.1_hiera_t.yaml", str(weights),
+    model = build_sam2_video_predictor("configs/sam2.1/sam2.1_hiera_t.yaml", str(weights),
                        device=device, apply_postprocessing=False)
     return SAM2ImagePredictor(model, max_hole_area=0, max_sprinkle_area=0)
 
@@ -170,6 +170,48 @@ def segment(predictor, request, detector=None):
     return [selection for _, _, mask in chosen if (selection := encode(mask, rgb))]
 
 
+def propagate(model, request):
+    """Two-frame SAM memory; no filenames, video handles or reused session state."""
+    p = request["propagation"]
+    prev, current = read_image(p["previousImageDataUrl"]), read_image(request["image"])
+    if current.shape != prev.shape:
+        return []
+    h, w = current.shape[:2]
+    seed = np.zeros((h, w), dtype="uint8")
+    rings = p["selection"].get("contours") or [p["selection"]["polygon"]]
+    paths = [np.int32([[round(pt["x"]*(w-1)), round(pt["y"]*(h-1))] for pt in ring]) for ring in rings]
+    cv2.fillPoly(seed, paths, 1)  # even-odd fill preserves holes
+    count = int(seed.sum())
+    if count < 16 or count >= .9*h*w:
+        return []
+    size = model.image_size
+    rgb = np.stack([cv2.resize(frame, (size,size), interpolation=cv2.INTER_LINEAR) for frame in (prev,current)])
+    images = torch.from_numpy(rgb).permute(0,3,1,2).float().div_(255)
+    images.sub_(torch.tensor([.485,.456,.406])[None,:,None,None]).div_(torch.tensor([.229,.224,.225])[None,:,None,None])
+    # Same fields as the pinned upstream init_state, which normally loads a
+    # video path from disk. The only replaced step is its frame loader.
+    state = dict(images=images,num_frames=2,video_height=h,video_width=w,device=model.device,
+                 storage_device=model.device,offload_video_to_cpu=True,offload_state_to_cpu=False,
+                 obj_ids=[], **{k:{} for k in ("point_inputs_per_obj","mask_inputs_per_obj","cached_features",
+                 "constants","obj_id_to_idx","obj_idx_to_id","output_dict_per_obj","temp_output_dict_per_obj",
+                 "frames_tracked_per_obj")})
+    try:
+        model.add_new_mask(state, frame_idx=0, obj_id=1, mask=seed)
+        for idx, _, logits in model.propagate_in_video(state,start_frame_idx=1,max_frame_num_to_track=1):
+            if idx != 1:
+                continue
+            scores = logits[0,0].float().cpu().numpy()
+            mask = scores>0
+            area = int(mask.sum())
+            if not max(16,count*.14) <= area <= min(count*5,.92*h*w) or np.mean(scores[mask]>2)<.65:
+                return []
+            result = encode(mask,current)
+            return [result] if result else []
+        return []
+    finally:
+        state.clear()
+
+
 def main():
     with contextlib.redirect_stdout(sys.stderr):
         predictor = load_model()
@@ -184,12 +226,15 @@ def main():
         try:
             body = json.loads(line)
             with contextlib.redirect_stdout(sys.stderr), torch.inference_mode():
-                selections = segment(predictor, body, detector)
-            result = {"selections": selections, "model": "SAM 2.1 Hiera Tiny"}
+                selections = propagate(predictor.model,body) if body.get("propagation") else segment(predictor, body, detector)
+            result = {"selections": selections, "model": "SAM 2.1 Hiera Tiny",
+                      "mode": "video_propagation" if body.get("propagation") else "image_segmentation"}
         except Exception as exc:
             print("Segment failed:", type(exc).__name__, str(exc)[:180], file=sys.stderr, flush=True)
             result = {"error": "segment_failed"}
         print(json.dumps(result, separators=(",", ":")), flush=True)
+        predictor.reset_predictor()
+        line = body = selections = result = None
 
 
 if __name__ == "__main__":

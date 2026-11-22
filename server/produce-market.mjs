@@ -40,9 +40,13 @@ export function parseProduce(data,c,region='전국',now=new Date()){
   const prices=samples.map(r=>r.price).sort((a,b)=>a-b),m=Math.floor(prices.length/2);
   return {commodity:c[0],region,currency:'KRW',quantity,unit,min:prices[0],max:prices.at(-1),median:prices.length%2?prices[m]:(prices[m-1]+prices[m])/2,samples};
 }
-export async function readProduce(c,region='전국'){
+export async function readProduce(c,region='전국',signal){
+  signal?.throwIfAborted();
   const browser=await chromium.launch({headless:true});
+  const cancel=()=>{void browser.close().catch(()=>{});};
+  signal?.addEventListener('abort',cancel,{once:true});
   try{
+    signal?.throwIfAborted();
     const ctx=await browser.newContext({javaScriptEnabled:false,serviceWorkers:'block'});
     const url=produceSource(c);
     await ctx.route('**/*',async route=>{
@@ -51,5 +55,5 @@ export async function readProduce(c,region='전국'){
     });
     const page=await ctx.newPage();await page.goto(url,{waitUntil:'domcontentloaded',timeout:18000});
     return parseProduce(await page.evaluate(readMarketDom),c,region);
-  }finally{await browser.close();}
+  }finally{signal?.removeEventListener('abort',cancel);await browser.close().catch(()=>{});}
 }

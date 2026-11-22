@@ -11,7 +11,7 @@ export function lateralOffset(head){
 export function cardTransform(position, head, offset){
  // Billboard faces the viewer; the price label stays 12 cm beside the hit and
  // 8 cm above it. Do not move the anchor as the camera moves.
- const m=new Float32Array(head); m[12]=position.x+offset.x; m[13]=position.y+.08; m[14]=position.z+offset.z;
+ const m=new Float32Array(head); m[12]=position.x+offset.x; m[13]=position.y+(offset.y??0)+.08; m[14]=position.z+offset.z;
  return m;
 }
 export function worldRenderer(gl,title,price){
@@ -22,14 +22,17 @@ export function worldRenderer(gl,title,price){
  gl.linkProgram(program);if(!gl.getProgramParameter(program,gl.LINK_STATUS))throw Error('program unavailable');
  const vertices=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,vertices);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-.5,-.5,.5,-.5,-.5,.5,.5,.5]),gl.STATIC_DRAW);
  const image=document.createElement('canvas');image.width=640;image.height=240;const ctx=image.getContext('2d');
+ const tex=gl.createTexture();function update(title,price){ctx.clearRect(0,0,640,240);
  ctx.fillStyle='rgba(11,28,27,.84)';ctx.beginPath();ctx.roundRect(2,2,636,236,36);ctx.fill();
  ctx.fillStyle='#d8f887';ctx.font='bold 23px sans-serif';ctx.fillText('HOWMUCH   /   조회 가격',34,55);
  ctx.fillStyle='#ffffff';ctx.font='bold 35px sans-serif';ctx.fillText(title,32,119,570);ctx.font='bold 46px sans-serif';ctx.fillText(price||'확인된 가격 없음',32,193,570);
- const tex=gl.createTexture();gl.bindTexture(gl.TEXTURE_2D,tex);gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,image);
+ gl.bindTexture(gl.TEXTURE_2D,tex);gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,image);}
+ update(title,price);
  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
  for(const wrap of [gl.TEXTURE_WRAP_S,gl.TEXTURE_WRAP_T])gl.texParameteri(gl.TEXTURE_2D,wrap,gl.CLAMP_TO_EDGE);
  const p=gl.getAttribLocation(program,'p'),m=gl.getUniformLocation(program,'m'),sz=gl.getUniformLocation(program,'size'),mark=gl.getUniformLocation(program,'marker');
  return {
+ update,
  draw(view,viewport,model,card){gl.viewport(viewport.x,viewport.y,viewport.width,viewport.height);gl.useProgram(program);gl.enable(gl.BLEND);gl.blendFuncSeparate(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA,gl.ONE,gl.ONE_MINUS_SRC_ALPHA);
   gl.bindTexture(gl.TEXTURE_2D,tex);gl.bindBuffer(gl.ARRAY_BUFFER,vertices);gl.enableVertexAttribArray(p);gl.vertexAttribPointer(p,2,gl.FLOAT,false,0,0);gl.uniform2f(sz,card?.22:.026,card?.0825:.026);gl.uniform1f(mark,card?0:1);
   gl.uniformMatrix4fv(m,false,multiply4(view.projectionMatrix,multiply4(view.transform.inverse.matrix,model)));gl.drawArrays(gl.TRIANGLE_STRIP,0,4);},

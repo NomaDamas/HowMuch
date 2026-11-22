@@ -7,12 +7,16 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		43E750E0A3DC34C4758F0851 /* TargetWorld.swift in Sources */ = {isa = PBXBuildFile; fileRef = DCBFC0B7266066077FBFCAB4 /* TargetWorld.swift */; };
 		6CC4C0D1471DC7441B278C80 /* App.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D748A6E2FA8E353CE317B88 /* App.swift */; };
+		7690597D82589DBBE64FC854 /* TargetSignature.swift in Sources */ = {isa = PBXBuildFile; fileRef = 588FC95D4126E15268309AB2 /* TargetSignature.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		1EBC10DD9BC30FDDDD88A126 /* HowMuchAR.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = HowMuchAR.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		588FC95D4126E15268309AB2 /* TargetSignature.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TargetSignature.swift; sourceTree = "<group>"; };
 		6D748A6E2FA8E353CE317B88 /* App.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = App.swift; sourceTree = "<group>"; };
+		DCBFC0B7266066077FBFCAB4 /* TargetWorld.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TargetWorld.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -28,6 +32,8 @@
 			isa = PBXGroup;
 			children = (
 				6D748A6E2FA8E353CE317B88 /* App.swift */,
+				588FC95D4126E15268309AB2 /* TargetSignature.swift */,
+				DCBFC0B7266066077FBFCAB4 /* TargetWorld.swift */,
 			);
 			path = Sources;
 			sourceTree = "<group>";
@@ -96,6 +102,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				6CC4C0D1471DC7441B278C80 /* App.swift in Sources */,
+				7690597D82589DBBE64FC854 /* TargetSignature.swift in Sources */,
+				43E750E0A3DC34C4758F0851 /* TargetWorld.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

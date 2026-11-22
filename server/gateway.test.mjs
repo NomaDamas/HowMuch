@@ -47,6 +47,9 @@ test('segmentation forwards point, polygon and every mask; upstream status is pr
  upstream.app.on('request',async(req,res)=>{let s='';for await(const c of req)s+=c;seen=JSON.parse(s);res.writeHead(error?422:200,{'content-type':'application/json'});res.end(JSON.stringify(error?{error:'sensitive image detail'}:{selections:[1,2],maskDataUrl:image}))});
  const f=await fixture(t,{agentOrigin:upstream.url});const selection={...input.selection,polygon:[{x:.1,y:.1},{x:.2,y:.3},{x:.3,y:.1}]},payload={imageDataUrl:image,selection,point:{x:.12,y:.12}};
  let r=await json(f.desktop.url+'/agent/segment',payload);assert.deepEqual(await r.json(),{selections:[1,2],maskDataUrl:image});assert.deepEqual(seen,payload);
+ const phone=await f.client(), propagated={imageDataUrl:image,propagation:{previousImageDataUrl:'data:image/png;base64,AQ==',selection:{...selection,contours:[selection.polygon]}}};
+ assert.equal((await json(f.phone.url+'/agent/segment',propagated)).status,401);
+ assert.equal((await json(f.phone.url+'/agent/segment',propagated,phone.headers)).status,200);assert.deepEqual(seen,propagated);
  error=true;r=await json(f.desktop.url+'/agent/segment',payload);assert.equal(r.status,422);assert.equal((await r.json()).error,'upstream_unavailable');
 });
 test('JS SDK follows jobs and SSE; Python SDK and MCP call the same running gateway',async t=>{

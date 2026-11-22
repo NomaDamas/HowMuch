@@ -4,6 +4,7 @@ const isFiniteNumber = (value) => typeof value === 'number' && Number.isFinite(v
 const isHttpUrl = (value) => typeof value === 'string' && /^https?:\/\//i.test(value);
 import { commodityFor, produceSource } from './produce-market.mjs';
 import { identityProof, modelMatches, needsModel } from './identity-market.mjs';
+import { referenceScope,referenceRows } from './reference-kind.mjs';
 
 export function isValidResearchInput(body) {
   if (!body || typeof body !== 'object') return false;
@@ -27,6 +28,16 @@ export function isValidResearchResult(result) {
   if (result.tools.length === 0 || result.tools.some((tool) => typeof tool !== 'string' || tool.length === 0)) return false;
   if (result.candidates.some((candidate) => !candidate || typeof candidate.name !== 'string' || candidate.name.length === 0 || !isFiniteNumber(candidate.confidence) || candidate.confidence < 0 || candidate.confidence > 1)) return false;
   if(result.comparables?.length || result.comparableMarket!==undefined)return false;
+  const reference=result.referenceMarket;
+  if(result.pricingMode==='category_reference'||reference!==undefined){
+    if(!reference||result.pricingMode!=='category_reference'||!result.candidates[0]||result.offers.length||result.lowest!==undefined||result.highest!==undefined||result.representative!==undefined||result.identity!==undefined||result.produceMarket!==undefined)return false;
+    const scope=referenceScope({...result.candidates[0],kind:'product',reference:reference.scope});
+    if(!scope||!Array.isArray(reference.listings)||reference.listings.length<1||reference.listings.length>4)return false;
+    if(scope.kind==='basic-tee'?result.status!=='followup_required':result.status!=='partial')return false;
+    if(reference.listings.some(o=>!o||typeof o.title!=='string'||!Array.isArray(o.evidence)||!o.evidence.length))return false;
+    const derived=referenceRows(scope,reference.listings,reference.listings.map((_,i)=>i));
+    if(derived.length!==reference.listings.length||derived.some((o,i)=>['kind','material','quantity','unit','quantityEvidence','basis'].some(k=>o[k]!==reference.listings[i][k])))return false;
+  }
   if(result.status==='followup_required'&&(typeof result.followup?.prompt!=='string'||!result.followup.prompt.trim() || result.followup.reason!=='exact_model_not_visible'||result.offers.length||result.lowest||result.produceMarket))return false;
   if(result.offers.length&&(result.pricingMode==='exact_model'||needsModel(result.candidates[0]))){
     const i=result.identity || {};
@@ -53,7 +64,7 @@ export function isValidResearchResult(result) {
   if (result.comparables !== undefined && (!Array.isArray(result.comparables) || result.comparables.some(o =>
       !o || o.matchKind !== 'comparable' || typeof o.comparisonBasis !== 'string' ||
       (!o.quantity ? false : typeof o.quantity !== 'string')))) return false;
-  const evidenceRows=[...result.offers,...(result.comparables||[])];
+  const evidenceRows=[...result.offers,...(result.comparables||[]),...(reference?.listings||[])];
   if (evidenceRows.some((offer) => !offer || (offer.id !== undefined && typeof offer.id !== 'string') || typeof offer.title !== 'string' || !isHttpUrl(offer.url) || typeof offer.merchant !== 'string' || !isFiniteNumber(offer.price) || offer.price <= 0 || !CURRENCIES.has(offer.currency) || !CONDITIONS.has(offer.condition) || typeof offer.checkedAt !== 'string' || Number.isNaN(Date.parse(offer.checkedAt)) || !Array.isArray(offer.evidence) || offer.evidence.length === 0 || offer.evidence.some((e) => typeof e !== 'string' || e.length === 0) || !isFiniteNumber(offer.confidence) || offer.confidence < 0 || offer.confidence > 1)) return false;
   const fresh = (offer) => {
     const checked = Date.parse(offer.checkedAt);

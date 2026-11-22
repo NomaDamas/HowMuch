@@ -23,7 +23,8 @@ export interface ResearchOffer {
 }
 
 export interface ResearchResult {
-  pricingMode?: 'exact_model' | 'produce_market' | 'verified_offer';
+  pricingMode?: 'exact_model' | 'produce_market' | 'verified_offer' | 'category_reference';
+  referenceMarket?: import('../../sdk/types').ReferenceMarket;
   identity?: import('../../sdk/types').ModelIdentity;
   produceMarket?: import('../../sdk/types').ProduceMarket;
   followup?: {reason:'exact_model_not_visible';prompt:string};
