@@ -61,3 +61,5 @@ extract_offer({ page, sourceUrl })
 
 The client assigns a monotonically increasing job id. When the camera target changes, it aborts the old request and ignores late events. Each branch has its own timeout; the reducer returns the branch that finished before the deadline and records the timeout in `tools`/diagnostics. Raw frames are ephemeral and are not logged by the agent.
 
+
+A recognized product with no successfully reached search/catalog or merchant page returns `research_unavailable`. A successful search that lacks a matching confirmed offer returns `no_result`. Clients can retry outages without presenting them as an empty market.

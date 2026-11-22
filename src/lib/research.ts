@@ -29,7 +29,7 @@ export interface ResearchResult {
   startedAt: string;
   completedAt: string;
   tools: string[];
-  status: 'complete' | 'completed' | 'partial' | 'no_result' | 'error';
+  status: 'complete' | 'completed' | 'partial' | 'no_result' | 'research_unavailable' | 'error';
   queries?: string[];
 }
 
