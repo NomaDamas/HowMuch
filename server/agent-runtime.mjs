@@ -3,6 +3,7 @@ import { pathToFileURL } from 'node:url';
 import { chromium } from 'playwright';
 import { merchantUrl, productObservations } from './merchant-prices.mjs';
 import { finalizeMarket } from './market.mjs';
+import { renderedProduct } from './merchant-dom.mjs';
 
 const imagePattern = /^data:image\/(png|jpeg|webp);base64,([\w+/=]+)$/i;
 const discoveryHost = h => ['google.com','www.google.com','lens.google.com','lens.usercontent.google.com','www.google.co.kr','www.gstatic.com','ssl.gstatic.com','www.googleusercontent.com'].includes(h);
@@ -98,7 +99,12 @@ export async function observePage(context,url,onReached=()=>{}){
     const resp=await p.goto(url,{waitUntil:'domcontentloaded',timeout:9500});
     if(!resp?.ok() || !merchantUrl(p.url())) return [];
     const docs=await p.locator('script[type="application/ld+json"]').evaluateAll(ns=>ns.slice(0,24).flatMap(n=>{try{return JSON.parse(n.textContent)}catch{return []}}));
-    onReached();return productObservations(docs,p.url());
+    onReached();
+    const structured=productObservations(docs,p.url());
+    if(structured.length)return structured;
+    const rendered=productObservations(await p.evaluate(renderedProduct),p.url());
+    for(const offer of rendered)offer.evidence.push('Product-scoped rendered microdata or product Open Graph price');
+    return rendered;
   } catch {return [];} finally {await p.close().catch(()=>{});}
 }
 async function catalogPhoto(raw) {
