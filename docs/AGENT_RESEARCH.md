@@ -14,10 +14,12 @@ The browser MVP treats research as one agent run with two concurrent branches. T
     "selection": {"x": 0.2, "y": 0.3, "width": 0.4, "height": 0.3,
       "polygon": [{"x": 0.2, "y": 0.3}]}
   },
-  "candidateHints": ["optional VLM candidate"],
-  "limits": {"maxPages": 12, "deadlineMs": 8000}
+  "labelDataUrl": "data:image/jpeg;base64,...",
+  "region": "서울"
 }
 ```
+
+The public REST/MCP input takes top-level `imageDataUrl`, `cutoutDataUrl`, `selection`, and `locale`. The gateway supplies the internal image context. The optional label image supplements the original object; the optional region selects a produce market.
 
 ## Concurrent tool calls
 
@@ -55,7 +57,7 @@ extract_offer({ page, sourceUrl })
 }
 ```
 
-`status` is `complete`, `partial`, `no_result`, or `error`. A partial response can render a candidate or one branch's offers, but the UI must label it. `no_result` must not fabricate a price. A lowest price is selected only after currency normalization, duplicate URL removal, outlier filtering, and an availability check; show a range/median when multiple trustworthy offers exist.
+If brand or model evidence is missing for eyewear or clothing, `followup_required` asks for a label close-up. For a supported commodity, `produceMarket` carries comparable observations (same source table and unit), separately from buyable offers. See [OpenAPI](../contracts/openapi.yaml) for result types. A partial response can render a candidate or one branch's offers, but the UI must label it. `no_result` must not fabricate a price. A lowest price is selected only after currency normalization, duplicate URL removal, outlier filtering, and an availability check; show a range/median when multiple trustworthy offers exist.
 
 ## Failure and cancellation
 

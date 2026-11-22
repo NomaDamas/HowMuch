@@ -1,0 +1,15 @@
+name: HowMuchAR
+options:
+  deploymentTarget:
+    iOS: "16.0"
+targets:
+  HowMuchAR:
+    type: application
+    platform: iOS
+    sources: [Sources]
+    settings:
+      PRODUCT_BUNDLE_IDENTIFIER: org.nomadamas.howmuch.ar
+      GENERATE_INFOPLIST_FILE: NO
+      INFOPLIST_FILE: Info.plist
+      TARGETED_DEVICE_FAMILY: "1,2"
+      SWIFT_VERSION: "5.0"

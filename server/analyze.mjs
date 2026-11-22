@@ -27,6 +27,7 @@ export async function researchAgent(input, signal, onPhase) {
     headers:{'content-type':'application/json',accept:streamed?'application/x-ndjson':'application/json'},body:JSON.stringify({
       runtime:'howmuch-research-v1',task:'multimodal-research-agent',jobId:randomUUID(),
       imageContext:{fullFrameDataUrl:image,cutoutDataUrl:cutout,selection:input.selection},
+      ...(input.labelDataUrl && {labelDataUrl:input.labelDataUrl}), ...(input.region && {region:input.region}),
       imageDataUrl:image,cutoutDataUrl:cutout,selection:input.selection,locale:input.locale||'ko-KR',
       tools:['visual_search','text_search','open_page','extract_offer','compare_offers']
     })});

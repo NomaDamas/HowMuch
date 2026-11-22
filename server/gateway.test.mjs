@@ -69,7 +69,8 @@ test('paired phone receives live phases before completion; plain JSON agent and 
  const final={status:'no_result',candidates:[],offers:[],tools:['visual_search'],startedAt:new Date().toISOString(),completedAt:new Date().toISOString()};
  let mode='stream',finish,aborted;const disconnected=new Promise(r=>aborted=r);
  upstream.app.on('request',async(req,res)=>{
-   for await(const chunk of req){} // Read request fully before testing response-side disconnect.
+   let payload=''; for await(const chunk of req)payload+=chunk;
+   if(mode==='legacy'){const forwarded=JSON.parse(payload);assert.equal(forwarded.labelDataUrl,image);assert.equal(forwarded.region,'서울');}
    if(mode==='legacy'){res.setHeader('content-type','application/json');res.end(JSON.stringify(final));return}
    res.writeHead(200,{'content-type':'application/x-ndjson'});
    if(mode==='abort'){res.on('close',aborted);res.flushHeaders();return}
@@ -83,7 +84,7 @@ test('paired phone receives live phases before completion; plain JSON agent and 
  assert.deepEqual(text.trim().split('\n').map(JSON.parse),[{phase:'identifying'},{phase:'researching',candidate:{name:'한글'}}]);
  finish();while(true){const part=await reader.read();if(part.done)break;text+=part.value}
  assert.equal(JSON.parse(text.trim().split('\n').at(-1)).result.status,'no_result');
- mode='legacy';const legacy=await json(f.phone.url+'/api/research',input,headers);
+ mode='legacy';const legacy=await json(f.phone.url+'/api/research',{...input,labelDataUrl:image,region:'서울'},headers);
  assert.deepEqual((await legacy.text()).trim().split('\n').map(s=>{const e=JSON.parse(s);return e.phase||e.result.status}),['identifying','no_result']);
  mode='abort';const abort=new AbortController(),second=await fetch(f.phone.url+'/api/research',{method:'POST',headers:{...headers,'content-type':'application/json'},body:JSON.stringify(input),signal:abort.signal});
  await second.body.getReader().read();abort.abort();await disconnected;

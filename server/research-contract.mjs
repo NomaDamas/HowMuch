@@ -2,6 +2,8 @@ const CURRENCIES = new Set(['KRW', 'USD', 'JPY', 'EUR']);
 const CONDITIONS = new Set(['new', 'used', 'unknown']);
 const isFiniteNumber = (value) => typeof value === 'number' && Number.isFinite(value);
 const isHttpUrl = (value) => typeof value === 'string' && /^https?:\/\//i.test(value);
+import { commodityFor, produceSource } from './produce-market.mjs';
+import { identityProof, modelMatches, needsModel } from './identity-market.mjs';
 
 export function isValidResearchInput(body) {
   if (!body || typeof body !== 'object') return false;
@@ -14,6 +16,8 @@ export function isValidResearchInput(body) {
   const cutout = body.cutout ?? body.cutoutDataUrl;
   if (cutout === undefined) return false;
   if (cutout !== undefined && (typeof cutout !== 'string' || !/^data:image\/(jpeg|jpg|png|webp);base64,/i.test(cutout) || cutout.length > 12_000_000)) return false;
+  if(body.labelDataUrl!==undefined && (typeof body.labelDataUrl!=='string'||body.labelDataUrl.length>12_000_000||!/^data:image\/(png|jpeg|webp);base64,[a-z\d+/]+=*$/i.test(body.labelDataUrl)))return false;
+  if(body.region!==undefined && (typeof body.region!=='string'||!body.region.trim()||body.region.length>30))return false;
   return true;
 }
 
@@ -22,6 +26,30 @@ export function isValidResearchResult(result) {
   if (typeof result.startedAt !== 'string' || Number.isNaN(Date.parse(result.startedAt)) || typeof result.completedAt !== 'string' || Number.isNaN(Date.parse(result.completedAt))) return false;
   if (result.tools.length === 0 || result.tools.some((tool) => typeof tool !== 'string' || tool.length === 0)) return false;
   if (result.candidates.some((candidate) => !candidate || typeof candidate.name !== 'string' || candidate.name.length === 0 || !isFiniteNumber(candidate.confidence) || candidate.confidence < 0 || candidate.confidence > 1)) return false;
+  if(result.comparables?.length || result.comparableMarket!==undefined)return false;
+  if(result.status==='followup_required'&&(typeof result.followup?.prompt!=='string'||!result.followup.prompt.trim() || result.followup.reason!=='exact_model_not_visible'||result.offers.length||result.lowest||result.produceMarket))return false;
+  if(result.offers.length&&(result.pricingMode==='exact_model'||needsModel(result.candidates[0]))){
+    const i=result.identity || {};
+    const proof=identityProof({...i,visibleModelEvidence:i.modelEvidence});
+    const selected=result.candidates[0], canon=v=>typeof v==='string'?v.trim().normalize('NFKC').toLowerCase():'';
+    if(!proof||!selected||canon(selected.brand)!==canon(proof.brand)||canon(selected.model)!==canon(proof.model)||!result.offers.every(o=>modelMatches(o,proof)))return false;
+  }
+  if(result.produceMarket!==undefined){
+    const m=result.produceMarket;
+    if(!m||result.pricingMode!=='produce_market'||result.offers.length||result.lowest||result.representative||typeof m.commodity!=='string'||!m.commodity.trim()||typeof m.region!=='string'||!m.region.trim()||m.currency!=='KRW'||!isFiniteNumber(m.quantity)||m.quantity<=0||!['kg','g','개','포기','단','송이','묶음','통','박스'].includes(m.unit)||!Array.isArray(m.samples)||!m.samples.length||m.samples.length>500)return false;
+    const commodity=commodityFor({kind:'product',marketKind:'produce',commodity:m.commodity});
+    if(!commodity)return false;
+    const canonical=raw=>{const u=new URL(raw);u.searchParams.sort();return u.href};
+    const expected=canonical(produceSource(commodity));
+    if(m.samples.some(s=>{
+      if(!s||s.quantity!==m.quantity||s.unit!==m.unit||s.currency!==m.currency||!(s.price>0)||!isFiniteNumber(s.price)||!s.title?.includes(m.commodity)||typeof s.source!=='string'||!s.source.startsWith('aT KAMIS · ')||!s.region || m.region!=='전국'&&s.region!==m.region)return true;
+      try{const u=new URL(s.url);if(canonical(u.href)!==expected)return true;}catch{return true;}
+      const age=Date.now()-Date.parse(s.observedAt+'T00:00:00+09:00'),checked=Date.now()-Date.parse(s.checkedAt);
+      return !Number.isFinite(age)||age< -300000||age>8*86400000||!Number.isFinite(checked)||checked< -300000||checked>86400000;
+    }))return false;
+    const prices=m.samples.map(s=>s.price).sort((a,b)=>a-b), i=prices.length>>1;
+    if(m.min!==prices[0]||m.max!==prices.at(-1)||m.median!==(prices.length%2?prices[i]:(prices[i-1]+prices[i])/2))return false;
+  }
   if (result.comparables !== undefined && (!Array.isArray(result.comparables) || result.comparables.some(o =>
       !o || o.matchKind !== 'comparable' || typeof o.comparisonBasis !== 'string' ||
       (!o.quantity ? false : typeof o.quantity !== 'string')))) return false;
@@ -57,8 +85,8 @@ export function isValidResearchResult(result) {
 }
 
 export function assertResearchEnvelope(body) {
-  if (!body || !['completed', 'complete', 'partial', 'no_result', 'research_unavailable', 'error'].includes(body.status)) throw new Error('research_agent_invalid_contract');
-  const result = body.result || body;
+  if (!body || !['completed', 'complete', 'partial', 'no_result', 'followup_required','research_unavailable', 'error'].includes(body.status)) throw new Error('research_agent_invalid_contract');
+  const result = { ...(body.result || body), status: body.status };
   if (!isValidResearchResult(result)) throw new Error('research_agent_invalid_contract');
   return { ...result, status: body.status, ...(Array.isArray(body.queries) ? { queries: body.queries } : {}) };
 }

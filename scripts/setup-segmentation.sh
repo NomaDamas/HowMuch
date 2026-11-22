@@ -1,6 +1,16 @@
 #!/usr/bin/env bash
 set -eu
 cd "$(dirname "$0")/.."
+if [[ "${1:-}" == "--detector-only" ]]; then
+  mkdir -p .howmuch/sam
+  target=.howmuch/sam/nanodet.onnx
+  digest=4b82da9944b88577175ee23a459dce2e26e6e4be573def65b1055dc2d9720186
+  check() { python3 -c 'import hashlib,sys;sys.exit(hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest()!=sys.argv[2])' "$1" "$digest"; }
+  if [[ -f "$target" ]] && check "$target"; then exit 0; fi
+  curl --fail --location --retry 2 'https://media.githubusercontent.com/media/opencv/opencv_zoo/48b10fa505aeb51fbd127fc60a5c660040e823b7/models/object_detection_nanodet/object_detection_nanodet_2022nov.onnx' -o "$target.part"
+  check "$target.part" && mv "$target.part" "$target"
+  exit $?
+fi
 dir=".howmuch/sam"
 mkdir -p "$dir"
 python="${PYTHON:-python3}"

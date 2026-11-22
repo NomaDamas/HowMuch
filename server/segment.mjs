@@ -21,7 +21,8 @@ function pump() {
       const child = spawn(python, ['-u', root + 'server/sam_worker.py'], {
         cwd: root, stdio: ['pipe', 'pipe', 'inherit'], env: {
           PATH: process.env.PATH, HOME: process.env.HOME, PYTORCH_ENABLE_MPS_FALLBACK: '1',
-          ...(process.env.HOWMUCH_SAM_DEVICE && { HOWMUCH_SAM_DEVICE: process.env.HOWMUCH_SAM_DEVICE })
+          ...(process.env.HOWMUCH_SAM_DEVICE && { HOWMUCH_SAM_DEVICE: process.env.HOWMUCH_SAM_DEVICE }),
+          ...(process.env.HOWMUCH_DETECTOR === 'off' && { HOWMUCH_DETECTOR: 'off' })
         }
       });
       worker = child;

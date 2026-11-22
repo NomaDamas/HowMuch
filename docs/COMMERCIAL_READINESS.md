@@ -24,6 +24,7 @@ The npm package versions and SPDX identifiers below come from the installed mani
 - Build: Vite 8.3.8 and @vitejs/plugin-react 6.3.0 (MIT).
 - Segmentation: [SAM 2 pinned source](https://github.com/facebookresearch/sam2/tree/2b90b9f5ceec907a1c18123530e92e794ad901a4) and the [SAM 2.1 tiny checkpoint/model card](https://huggingface.co/facebook/sam2.1-hiera-tiny/tree/de431c4043854a71d8101e17995dfe596bf101a5) (Apache-2.0). The setup script verifies the checkpoint SHA-256; additional Python/library notices are required when shipping that environment.
 - Alternatives considered only: Browser Use, Crawl4AI, Firecrawl and SearXNG are not bundled search backends. No upstream project licenses a third party's retailer data.
+- Optional OpenCV Zoo NanoDet-Plus 1.5x/416 code and ONNX weights: the pinned [model directory](https://github.com/opencv/opencv_zoo/tree/48b10fa505aeb51fbd127fc60a5c660040e823b7/models/object_detection_nanodet) says all files there use [Apache-2.0](https://github.com/opencv/opencv_zoo/blob/48b10fa505aeb51fbd127fc60a5c660040e823b7/models/object_detection_nanodet/LICENSE). Attribution: NanoDet by RangiLyu; OpenCV Zoo port contributed by Sri Siddarth Chakaravarthy (GSoC 2022). Preserve upstream notices and license if redistributing the model. HowMuch fetches the weights separately and verifies the pinned LFS digest. This permission concerns the detector code/weights, not merchant photos or training images.
 - Commercial VLM: a deployment chooses the endpoint, model and account. Operator permission, retention, subprocessor and region reviews remain open until the particular deployment is recorded. This inventory does not certify permission to upload images or republish prices from any merchant.
 
 Before enabling a provider in production, record:
@@ -49,3 +50,8 @@ Before enabling a provider in production, record:
 The UI must expose a visible `HowMuch by NomaDamas MinXing` identity and a `Source` link to the corresponding source repository or source bundle. Any hosted modified version must provide the corresponding source to users interacting with it over a network, as required by AGPL Section 13. Keep third-party dependencies and notices discoverable.
 
 This document is an engineering checklist, not legal advice. Obtain a legal review before selling access, redistributing provider data, or enabling a new commercial source.
+
+
+## Native placement and produce observations
+
+The optional Android companion depends on Google Play Services for AR and the Google ARCore SDK; the iOS companion uses the Apple ARKit and SceneKit system frameworks. The companion sources are part of HowMuch, while device services and platform SDK terms remain separate. Unsigned developer builds are not store releases. KAMIS retail data is attributed per observation with source and survey date. Confirm [KAMIS](https://www.kamis.or.kr/) redistribution and commercial display terms before publicly offering that adapter; public access is not a redistribution grant.
