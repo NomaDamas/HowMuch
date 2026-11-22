@@ -19,6 +19,10 @@ Use these issue keys in GitHub. Each parent issue must link its sub-issues and m
 - HM-2.3 Device-side object tracking between responses
 - HM-2.4 Occlusion/loss timeout and reacquisition
 - HM-2.5 Edge-aware 3D-like HUD placement and perspective
+- HM-2.6 Segmentation-first dashed preview before identity; never a full-screen panel.
+- HM-2.7 Multi-object registry with stable track IDs, up to four independent automatic research jobs/cards, tap-to-switch, and an active-card/cost cap. Manual mode researches only the drawn subject.
+- HM-2.8 Acquire/lost hysteresis to prevent flicker during brief occlusion.
+- HM-2.9 Camera transform tests for cover, rotation, mirror, and safe areas.
 
 **Acceptance:** the card follows the object, never relies on a persistent rectangle, disappears when the object leaves view, and returns when reacquired.
 
@@ -39,6 +43,11 @@ Use these issue keys in GitHub. Each parent issue must link its sub-issues and m
 - HM-4.4 Browser Use/Playwright evidence adapter
 - HM-4.5 Crawl4AI/Firecrawl/SearXNG permitted extraction adapter
 - HM-4.6 Evidence schema and source timestamp
+- HM-4.7 Research state machine with concurrent visual/text branches and stale-run cancellation.
+- HM-4.8 AI evidence reviewer binding each offer to URL/page evidence, merchant, condition, availability, currency, and timestamp.
+- HM-4.9 Reject unsupported, login-only, snippet-only, stale, or title-mismatched offers.
+- HM-4.10 Provider fallback prohibition: failures return typed `research_unavailable`; no silent search API substitution.
+- HM-4.11 Visual-search provenance without storing raw frames by default.
 
 **Acceptance:** every shown offer has source evidence; tool failure yields a visible no-result state; no search API fallback is silently introduced.
 
@@ -67,8 +76,15 @@ Use these issue keys in GitHub. Each parent issue must link its sub-issues and m
 - HM-7.3 Mobile Safari/Chrome smoke test
 - HM-7.4 Accessibility and reduced-motion pass
 - HM-7.5 Isolated GPT-6.2 Astra High review and merge gate
+- HM-7.6 Multi-object enter/leave/occlusion fixture.
+- HM-7.7 Segmentation-first dashed-preview visual fixture.
+- HM-7.8 Missing URL/stale/mismatch/unavailable/provider-error evidence fixtures.
+- HM-7.9 Short-lived QR/deep-link pairing to the same research job.
+- HM-7.10 Versioned TypeScript/Python SDK and OpenAPI/MCP contract fixtures.
 
 **Acceptance:** build, tests, smoke test, provider checklist, and isolated review pass before merge.
+
+**PR checklist:** no persistent bounding box; multi-object lifecycle tests; dashed preview before identity; evidence for every price; no silent fallback; AGPL source link and provider terms; QR/REST/MCP/SDK compatibility; tests, build, mobile smoke, and isolated GPT-6.2 Astra High review pass.
 
 ## HM-8 Native app after web acceptance
 
@@ -76,5 +92,8 @@ Use these issue keys in GitHub. Each parent issue must link its sub-issues and m
 - HM-8.2 Android CameraX/Compose shell
 - HM-8.3 ARKit/ARCore anchors and offline fallback
 - HM-8.4 Store privacy, permissions, crash and performance readiness
+- HM-8.5 Native multi-object tracking parity
+- HM-8.6 QR handoff from native camera to research job
+- HM-8.7 Public TypeScript/Python SDK release and migration notes
 
 **Acceptance:** native clients consume the same API contracts and preserve the web overlay behavior.

@@ -4,3 +4,7 @@ dist/
 .env.*
 !.env.example
 .DS_Store
+
+# Local model weights, isolated environment, and demo certificates
+.howmuch/
+__pycache__/

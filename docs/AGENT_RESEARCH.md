@@ -30,7 +30,7 @@ open_page({ url })
 extract_offer({ page, sourceUrl })
 ```
 
-`visual_search` and `text_search` start concurrently after the VLM has produced candidate names and queries. The visual branch must keep the original image/cutout context. The text branch must preserve every query used. Browser tools should inspect rendered page text or screenshots and return evidence snippets; they must not bypass authentication, paywalls, robots controls, or a marketplace's terms. Search API adapters may be added for an approved provider, but they are not the default or a silent fallback.
+`visual_search` and `text_search` start concurrently after the VLM has produced candidate names and queries. The visual branch must keep the original image/cutout context. The text branch must preserve every query used. Browser tools should inspect rendered page text or screenshots and return evidence snippets; they must not bypass authentication, paywalls, robots controls, or a marketplace's terms. HowMuch does not call a product search API or switch to one if browser research fails.
 
 ## Response
 
@@ -61,3 +61,5 @@ extract_offer({ page, sourceUrl })
 
 The client assigns a monotonically increasing job id. When the camera target changes, it aborts the old request and ignores late events. Each branch has its own timeout; the reducer returns the branch that finished before the deadline and records the timeout in `tools`/diagnostics. Raw frames are ephemeral and are not logged by the agent.
 
+
+A recognized product with no successfully reached search/catalog or merchant page returns `research_unavailable`. A successful search that lacks a matching confirmed offer returns `no_result`. Clients can retry outages without presenting them as an empty market.

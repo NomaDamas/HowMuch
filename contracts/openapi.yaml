@@ -17,11 +17,77 @@ paths:
         '200':
           description: Evidence-backed agent result
           content:
+            application/x-ndjson:
+              schema:
+                type: string
+                description: 'Opt in with Accept: application/x-ndjson. Newline-delimited records: {phase: identifying}, optionally {phase: researching, candidate} when the VLM has identified the product, then {result} or {error}. Legacy upstreams may supply only a final result.'
             application/json:
               schema:
                 $ref: '#/components/schemas/ResearchResult'
         '400': { description: Invalid image, cutout, or selection }
         '503': { description: Research agent unavailable }
+  /api/jobs:
+    post:
+      operationId: startResearchJob
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/ResearchRequest' } } }
+      responses:
+        '202': { description: Job accepted with jobId and relative status/events URLs }
+        '429': { description: Rate or job capacity reached }
+  /api/jobs/{jobId}:
+    parameters: [{ name: jobId, in: path, required: true, schema: { type: string, format: uuid } }]
+    get:
+      operationId: getResearchJob
+      responses:
+        '200': { description: Latest status with optional research result }
+        '404': { description: Unknown job or owned by another client }
+  /api/jobs/{jobId}/events:
+    parameters: [{ name: jobId, in: path, required: true, schema: { type: string, format: uuid } }]
+    get:
+      operationId: streamJobEvents
+      parameters: [{ name: Last-Event-ID, in: header, schema: { type: integer } }]
+      responses:
+        '200': { description: Monotonic queued/running/completed or failed job events, content: { text/event-stream: { schema: { type: string } } } }
+  /agent/segment:
+    post:
+      operationId: segmentSelection
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [imageDataUrl]
+              properties:
+                imageDataUrl: { type: string, pattern: '^data:image/' }
+                point: { type: object, properties: { x: {type: number}, y: {type: number} } }
+                selection: { $ref: '#/components/schemas/Selection' }
+      responses:
+        '200': { description: All selected masks, with normalized bounds and contour }
+        '422': { description: Frame could not be segmented }
+        '503': { description: Model unavailable }
+  /v1/pairing/sessions:
+    post:
+      operationId: issuePhoneInvite
+      requestBody: { required: true, content: { application/json: { schema: { type: object } } } }
+      responses:
+        '201': { description: Desktop-only single-use HTTPS invite with sessionId and expiresAt }
+  /v1/pairing/exchange:
+    post:
+      operationId: exchangePhoneInvite
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [sessionId, token], properties: {sessionId: {type: string}, token: {type: string}} } } }
+      responses:
+        '200': { description: Secure HttpOnly session cookie issued on phone TLS listener }
+        '401': { description: Expired or already used invite }
+  /v1/pairing/sessions/{sessionId}:
+    parameters: [{ name: sessionId, in: path, required: true, schema: { type: string, format: uuid } }]
+    delete:
+      operationId: revokeSession
+      responses:
+        '200': { description: Session revoked by desktop or owning phone }
 components:
   schemas:
     Selection:
@@ -30,7 +96,7 @@ components:
       properties:
         x: { type: number, minimum: 0, maximum: 1 }
         y: { type: number, minimum: 0, maximum: 1 }
-        width: { type: number, exclusiveMinimum: 0, maximum: 1 }
+        width: { type: number, minimum: 0, exclusiveMinimum: true, maximum: 1 }
         height: { type: number, exclusiveMinimum: 0, maximum: 1 }
         polygon: { type: array, items: { type: object, required: [x,y], properties: { x: {type: number}, y: {type: number} } } }
     ResearchRequest:
@@ -52,6 +118,9 @@ components:
         price: { type: number, exclusiveMinimum: 0 }
         currency: { type: string, enum: [KRW, USD, JPY, EUR] }
         condition: { type: string, enum: [new, used, unknown] }
+        shipping: { type: number, minimum: 0 }
+        availability: { type: string }
+        normalizedPrice: { type: number, minimum: 0 }
         checkedAt: { type: string, format: date-time }
         evidence: { type: array, minItems: 1, items: { type: string } }
         confidence: { type: number, minimum: 0, maximum: 1 }
@@ -59,7 +128,7 @@ components:
       type: object
       required: [status,candidates,offers,tools,startedAt,completedAt]
       properties:
-        status: { type: string, enum: [complete, completed, partial, no_result, error] }
+        status: { type: string, enum: [complete, completed, partial, no_result, research_unavailable, error] }
         candidates: { type: array, items: { type: object, required: [name,confidence], properties: { name: {type: string}, brand: {type: string}, model: {type: string}, category: {type: string}, confidence: {type: number, minimum: 0, maximum: 1} } } }
         offers: { type: array, items: { $ref: '#/components/schemas/Offer' } }
         lowest: { oneOf: [{type: string}, {$ref: '#/components/schemas/Offer'}] }
