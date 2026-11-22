@@ -1,1 +1,22 @@
-{"name":"howmuch","version":"1.0.0","license":"AGPL-3.0-or-later","tools":[{"name":"research_object","description":"Research one selected object using commercial VLM plus concurrent agent-operated visual and text browser research.","inputSchema":{"type":"object","required":["imageDataUrl","cutoutDataUrl","selection","locale"]},"endpoint":"POST /api/research"},{"name":"visual_search","description":"Agent-operated visual search UI tool; never a direct search API fallback.","inputSchema":{"type":"object","required":["imageDataUrl","locale"]}},{"name":"text_search","description":"Agent-operated text search UI tool using VLM-generated queries; never a direct search API fallback.","inputSchema":{"type":"object","required":["queries","locale"]}},{"name":"open_page","description":"Open a permitted result page and capture rendered evidence.","inputSchema":{"type":"object","required":["url"]}},{"name":"extract_offer","description":"Extract price, merchant, condition and evidence from a permitted page.","inputSchema":{"type":"object","required":["page","sourceUrl"]}},{"name":"compare_offers","description":"Normalize and reconcile evidence-backed offers into lowest, highest and representative prices.","inputSchema":{"type":"object","required":["offers"]}}]}
+{
+  "transport": "stdio",
+  "command": "node",
+  "args": [
+    "server/mcp.mjs"
+  ],
+  "tools": [
+    {
+      "name": "research_object",
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "imageDataUrl",
+          "cutoutDataUrl",
+          "selection",
+          "locale"
+        ]
+      },
+      "endpoint": "POST /api/research"
+    }
+  ]
+}

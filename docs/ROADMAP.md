@@ -16,13 +16,7 @@ HowMuch is an AGPL multimodal research agent. A user points at a specific produc
 
 ## Approved open-source search building blocks
 
-The MVP uses proven, maintained projects as adapters rather than inventing a crawler. Repository popularity is a screening signal (checked before implementation); licenses and each provider's terms still govern production use.
-
-- **Browser Use** (`browser-use/browser-use`, 50k+ GitHub stars): browser-agent control for a permitted, user-visible fallback flow. It is never used to bypass bot protection.
-- **Crawl4AI** (`unclecode/crawl4ai`, 50k+): structured extraction for pages that permit crawling; output is evidence, not an authority.
-- **Firecrawl** (`mendableai/firecrawl`, 20k+): hosted/self-hosted search and page extraction adapter when its endpoint and target terms permit use.
-- **SearXNG** (`searxng/searxng`, 10k+): self-hosted metasearch adapter, including image/shopping-capable engines configured by deployment.
-- **Playwright** (`microsoft/playwright`, 70k+): deterministic browser automation for screenshot evidence in approved flows and local end-to-end tests.
+The web research worker imports Playwright. Browser Use, Firecrawl, Crawl4AI and SearXNG are potential alternatives, not installed providers. The [component inventory](COMMERCIAL_READINESS.md) distinguishes code and weights used by the build from projects considered.
 
 Agent-only research is the product path: visual-search UI tools and VLM-generated text-search tools run concurrently in one research run, then agent browser tools open pages and collect evidence. Search APIs are deliberately excluded as a fallback. Every tool result returns source URL, timestamp, merchant, condition and price; no result is shown as a verified lowest price without evidence.
 
@@ -76,7 +70,7 @@ Analyze API -> segmentation adapter + VLM adapter + search orchestrator
 - **5.1 Progressive states:** identifying, checking prices, final evidence-backed card.
 - **5.2 Placement:** beside object, edge-aware side flipping, and no default occlusion.
 - **5.3 Detail sheet:** sources, breakdown, confidence, retry, and better-view action.
-- **5.4 Multi-object:** one active card in MVP; queue detections and allow tap-to-switch.
+- **5.4 Multi-object:** up to four independent stable automatic subjects/cards; manual selection starts only one.
 - **5.5 Person mode:** explicit opt-in, style/card output only, safety copy, and data minimization.
 
 ### E6 API, observability, privacy

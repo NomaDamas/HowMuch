@@ -5,7 +5,8 @@ HowMuch is a camera-first product and price lookup experience. The browser MVP d
 ## Runtime pipeline
 
 ```text
-Camera stream -> local selection/tracking -> representative frame
+Camera stream -> local selection/tracking -> segmentation-first dashed preview
+             -> representative frame
              -> identify provider (VLM + image search)
              -> price provider fan-out -> normalized offers
              -> mask/cutout provider -> overlay compositor
@@ -18,16 +19,20 @@ The UI has two modes:
 
 The overlay uses normalized coordinates (`0..1`) from the camera image. The client maps them to the preview's `object-fit: cover` transform, clamps the card to safe insets, and flips the card to the opposite side when it would cover the target. A tracking loss hides the card after a short grace period; reacquisition shows it again without a new search when the object fingerprint is cached.
 
+The segmentation contour is rendered before identity and price, follows the mask rather than a rectangle, and transitions without a layout jump. A track registry supports multiple objects, while automatic mode admits up to four independently researched stable masks and manual mode only the selected track.
+
 ## Provider boundaries
 
 Provider interfaces keep credentials and vendor-specific behavior out of the UI:
 
 - `VisionProvider.identify(image, selection)` returns candidate names, attributes, confidence, and search queries.
 - `MaskProvider.segment(image, selection)` returns a transparent PNG/mask and the refined normalized bounds.
-- `ResearchAgentProvider.research(context)` starts visual and VLM-generated text research concurrently through permitted browser tools and returns evidence-backed offers. A search provider is an internal adapter, not a user-visible fallback path.
+- `ResearchAgentProvider.research(context)` starts visual and VLM-generated text research concurrently through permitted browser tools and returns evidence-backed offers. Provider errors are fail-closed and return a typed unavailable state; silent API fallback is prohibited.
 - `PriceAggregator.normalize(offers)` deduplicates listings, converts currency, rejects implausible values, and produces `lowest`, `range`, and a timestamp.
 
-The default development provider is deterministic mock data so localhost works without API keys. Production agents can use Browser Use, Playwright, MCP browser tools, or an approved search provider selected by environment variables. Do not bypass authentication, paywalls, robots controls, or marketplace terms. Preserve rendered evidence, source URLs, merchant, availability, and checked-at timestamps.
+The live path uses a local SAM 2.1 worker and a configured commercial VLM that operates bounded browser tools through Playwright. Tests inject fixtures; the camera never silently substitutes mock prices or a search API. Do not bypass authentication, paywalls, robots controls, or marketplace terms. Preserve rendered evidence, source URLs, merchant, availability, and checked-at timestamps.
+
+The integration surface is versioned and shared by REST/OpenAPI, MCP, SSE/WebSocket jobs, TypeScript/Python SDKs, and QR/deep-link pairing. QR tokens are short-lived, scoped to one research job, and never contain provider secrets.
 
 ## Latency and caching
 

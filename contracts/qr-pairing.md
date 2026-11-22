@@ -1,11 +1,3 @@
-# QR pairing contract
+# Local QR pairing
 
-QR pairing connects a phone camera client to a localhost HowMuch session without embedding secrets.
-
-1. Host creates a short-lived session: `POST /v1/pairing/sessions` → `{sessionId, token, expiresAt}`.
-2. Host renders a QR containing `howmuch://pair?session=<id>&token=<single-use-token>`.
-3. Phone scans, confirms the displayed host origin, and exchanges the token once: `POST /v1/pairing/exchange`.
-4. Server returns an ephemeral client token scoped to the session; it expires after 10 minutes or explicit revoke.
-5. Research images and results travel over the existing `/api/research` contract. Provider secrets never enter the QR or phone.
-
-Implementations must use HTTPS outside localhost, single-use tokens, origin confirmation, expiry, revoke, and no raw camera-frame persistence.
+Only the loopback API may issue an invite: POST /v1/pairing/sessions with JSON {}. It returns sessionId, expiresAt and an HTTPS URL with a one-time fragment. Scan that URL and confirm the displayed origin on the phone. The client removes the fragment before exchanging {sessionId,token} at POST /v1/pairing/exchange on the TLS listener. The phone receives a Secure, HttpOnly, same-site session cookie, not a provider key. The token cannot be replayed; invite lifetime is five minutes, client lifetime ten minutes from exchange. DELETE /v1/pairing/sessions/{id} revokes that session (desktop or session owner). Job streams and status belong to the creating client. Restarting the API clears pairing and job state.

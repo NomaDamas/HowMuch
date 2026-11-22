@@ -7,7 +7,9 @@ export function normalizePolygon(points) {
 }
 export function overlayPlacement(anchor, cardSize = { width: 190, height: 150 }) {
   const side = anchor.x > 0.62 ? 'left' : 'right';
-  return { side, x: side === 'right' ? clamp01(anchor.x + 0.08) : clamp01(anchor.x - 0.08), y: clamp01(anchor.y), cardSize };
+  const cardWidth = cardSize.width / 480;
+  const x = side === 'right' ? clamp01(Math.min(anchor.x + 0.08, 1 - cardWidth - 0.02)) : clamp01(Math.max(anchor.x - cardWidth - 0.08, 0.02));
+  return { side, x, y: clamp01(Math.min(Math.max(anchor.y - 0.08, 0.12), 0.72)), cardSize };
 }
 export function cropDataUrl(video, selection) {
   const canvas = document.createElement('canvas');
@@ -38,7 +40,9 @@ export function screenToMediaSelection(selection, viewport, media) {
 export function cropLocalSelection(mediaSelection, polygon = []) {
   const width = Math.max(mediaSelection.width, 0.0001);
   const height = Math.max(mediaSelection.height, 0.0001);
-  return { x: 0, y: 0, width: 1, height: 1, polygon: polygon.map((point) => ({ x: clamp01((point.x - mediaSelection.x) / width), y: clamp01((point.y - mediaSelection.y) / height) })) };
+  const result = { x: 0, y: 0, width: 1, height: 1 };
+  if (polygon.length >= 3) result.polygon = polygon.map((point) => ({ x: clamp01((point.x - mediaSelection.x) / width), y: clamp01((point.y - mediaSelection.y) / height) }));
+  return result;
 }
 function renderedWidth(media, scale) { return media.width * scale; }
 function renderedHeight(media, scale) { return media.height * scale; }

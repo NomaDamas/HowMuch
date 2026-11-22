@@ -15,6 +15,17 @@ HowMuch is distributed under AGPL-3.0-or-later. AGPL governs the HowMuch source 
 
 ## Provider adapter checklist
 
+### Components actually used (2026-11-23)
+
+The npm package versions and SPDX identifiers below come from the installed manifests and can be checked against `package-lock.json`. Retain each package's full license and any NOTICE files when redistributing its code.
+
+- Browser worker: [Playwright](https://github.com/microsoft/playwright) 1.65.1 (Apache-2.0). Chromium's bundled notices are separate.
+- Camera UI: React and React DOM 19.3.1 (MIT), lucide-react 1.77.0 (ISC; also retain upstream icon notices), qrcode 1.5.4 (MIT).
+- Build: Vite 8.3.8 and @vitejs/plugin-react 6.3.0 (MIT).
+- Segmentation: [SAM 2 pinned source](https://github.com/facebookresearch/sam2/tree/2b90b9f5ceec907a1c18123530e92e794ad901a4) and the [SAM 2.1 tiny checkpoint/model card](https://huggingface.co/facebook/sam2.1-hiera-tiny/tree/de431c4043854a71d8101e17995dfe596bf101a5) (Apache-2.0). The setup script verifies the checkpoint SHA-256; additional Python/library notices are required when shipping that environment.
+- Alternatives considered only: Browser Use, Crawl4AI, Firecrawl and SearXNG are not bundled search backends. No upstream project licenses a third party's retailer data.
+- Commercial VLM: a deployment chooses the endpoint, model and account. Operator permission, retention, subprocessor and region reviews remain open until the particular deployment is recorded. This inventory does not certify permission to upload images or republish prices from any merchant.
+
 Before enabling a provider in production, record:
 
 1. Provider name, endpoint, account owner, and data region.

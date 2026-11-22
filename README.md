@@ -1,24 +1,39 @@
 # HowMuch by NomaDamas MinXing
 
-HowMuch is an AGPL multimodal camera experience. Hold a product in view for about 3–5 seconds, or switch to touch/draw mode and select it. The selected object is segmented, sent with its surrounding scene to a commercial VLM-led research agent, and shown with an evidence-backed market range in a translucent HUD beside the object. The HUD hides on tracking loss and returns after reacquisition.
+Point the mobile camera at a product, or tap/draw around it. A translucent card tracks the selected object in screen space. Prices come from evidence found by a commercial VLM and agent-operated browser research. Search failures and unavailable prices are displayed explicitly. The browser desktop and phone use the same research engine.
 
-## Run locally
+## Run localhost
 
-```bash
-npm install
-cp .env.example .env.local
-npm run dev
-npm run api
+Requires Node 22+, npm, a configured commercial VLM credential, Playwright Chromium, and the segmentation model. Use the shell environment or a private, untracked environment file (never prefix secrets with `VITE_`).
+
+```sh
+npm ci
+npx playwright install chromium
+sh scripts/setup-segmentation.sh
+# Set VLM_API_KEY, VLM_BASE_URL, and VLM_MODEL in your shell or source the existing local credential.
+npm run demo
 ```
 
-Set `RESEARCH_AGENT_ENDPOINT` on the server and `VITE_RESEARCH_ENDPOINT` in the client. `/api/research` is the only product research route. The agent must operate visual and VLM-generated text research concurrently through permitted browser/MCP tools and return source URLs, evidence, condition, currency, timestamp, and confidence. There is no direct search API or deterministic price fallback.
+Open **http://localhost:5173**. The launcher starts the loopback research API (:8787), browser agent (:8791), and Vite. Press Ctrl+C to stop. For separate processes run `npm run demo:agent`, `npm run demo:api`, and `npm run dev`. `RESEARCH_TIMEOUT_MS` defaults to 180000; API accepts 1–600 seconds. No public tunnel is used.
 
-## Validation
+## Phone on the same Wi-Fi
 
-```bash
-npm test
-npm run build
-node --check server/analyze.mjs
-```
+1. Stop the desktop launcher. Run `npm run demo:phone` (requires OpenSSL with `-addext`; set `HOWMUCH_LAN_IP` if your machine has multiple adapters). It builds the frontend, generates a private local CA and a seven-day server certificate under ignored `.howmuch/tls`, and serves **only the built app** over HTTPS on the Wi-Fi address, port 8443. The desktop developer server and agent remain loopback-only.
+2. Transfer **only** `.howmuch/tls/ca.crt` to your test phone using AirDrop or USB. Compare its SHA-256 fingerprint with the launch output. Never share any `.key`. On iOS install the downloaded profile under Settings → General → VPN & Device Management, then enable the root under General → About → Certificate Trust Settings. On Android use Security → Encryption & credentials → Install a certificate → CA certificate (manufacturer labels vary). Use a test device that permits user CAs; do not bypass TLS warnings. Remove the test CA from the phone after the demo.
+3. On the desktop open **http://localhost:5173 → 설정 → 휴대폰 연결 QR**. Scan with the phone camera, verify the displayed HTTPS origin, and tap **이 서버에 연결**. Allow camera access. The code expires after five minutes and works once; the resulting HttpOnly session lasts ten minutes. Generate a new code or choose **연결 해제** on the desktop to revoke. A direct LAN URL cannot access paid research or segmentation without pairing.
+4. If Safari/Chrome cannot open the link, verify both devices are on the same Wi-Fi, client isolation is disabled, the host firewall allows the private Wi-Fi connection on 8443, and the certificate SAN matches the current LAN IP. Restart the launcher after changing Wi-Fi.
 
-See [`docs/AGENT_RESEARCH.md`](docs/AGENT_RESEARCH.md), [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md), [`docs/ISSUES.md`](docs/ISSUES.md), and [`docs/COMMERCIAL_READINESS.md`](docs/COMMERCIAL_READINESS.md).
+For camera permission, local HTTP works on the desktop only; use trusted HTTPS on the phone. The web overlay follows an image-space track; it is not a measured 3-D world anchor.
+
+## Integrate
+
+- REST: `POST /api/research` returns the final result. `POST /api/jobs` with the same request returns a job ID, SSE URL and polling URL. `GET /api/jobs/{id}/events` replays queued/running and terminal status; `Last-Event-ID` resumes the stream. Finished jobs/results are available for up to five minutes; frames are not retained in the job store. SDKs are intended for trusted localhost clients.
+- MCP: Configure a **stdio** server with `command: "node"` and `args: ["/absolute/path/to/HowMuch/server/mcp.mjs"]`. Run the desktop API first. `tools/list` exposes `research_object`; visual search and browser actions are private tools inside that research run. Set `HOWMUCH_API_URL` to use a different trusted loopback port. For direct CLI use `npm run --silent mcp` so stdout stays JSON-RPC only.
+- TypeScript: `import { HowMuchClient } from './sdk/howmuch-client.mjs'; const client = new HowMuchClient(); const job = await client.startJob(input); for await (const e of client.events(job.jobId)) console.log(e.status);`
+- Python (standard library): `from sdk.howmuch_client import HowMuchClient; client = HowMuchClient(); job = client.start_job(payload); print([e["status"] for e in client.events(job["jobId"])])`. Both clients also provide synchronous-request-style `research` (async in JS).
+
+`npm test` runs unit and integration tests; `npm run build` produces the static phone frontend. See [API](contracts/openapi.yaml), [research architecture](docs/ARCHITECTURE.md), [research evidence](docs/AGENT_RESEARCH.md), and [release gates](docs/COMMERCIAL_READINESS.md). A successful test with fixtures is not a physical-device or live-price validation.
+
+To validate phone pairing without a physical phone, build the project and run `npm run smoke:pairing`. The smoke test validates the TLS certificate, decodes the rendered QR, confirms in a mobile-size Chromium viewport, and checks revocation.
+
+The segmentation installer downloads [SAM 2.1 Hiera Tiny](https://huggingface.co/facebook/sam2.1-hiera-tiny) and verifies its SHA-256. Both upstream project and weights are Apache-2.0. Tiny trades mask quality for latency; it is not a claim of benchmark leadership. This demo uses CUDA if available and CPU on Mac; see [setup](scripts/setup-segmentation.sh). Use Python 3.10+ compatible with PyTorch. A point or freehand outline prompts one mask; automatic mode samples several foreground prompts per frame and keeps at most four non-overlapping candidates. Crops have an alpha channel; webcam RGB outside a mask is cleared in that crop. The VLM separately receives the surrounding frame for context. Merchant image-search UIs receive only the selected crop.

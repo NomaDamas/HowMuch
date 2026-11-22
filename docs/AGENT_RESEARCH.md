@@ -30,7 +30,7 @@ open_page({ url })
 extract_offer({ page, sourceUrl })
 ```
 
-`visual_search` and `text_search` start concurrently after the VLM has produced candidate names and queries. The visual branch must keep the original image/cutout context. The text branch must preserve every query used. Browser tools should inspect rendered page text or screenshots and return evidence snippets; they must not bypass authentication, paywalls, robots controls, or a marketplace's terms. Search API adapters may be added for an approved provider, but they are not the default or a silent fallback.
+`visual_search` and `text_search` start concurrently after the VLM has produced candidate names and queries. The visual branch must keep the original image/cutout context. The text branch must preserve every query used. Browser tools should inspect rendered page text or screenshots and return evidence snippets; they must not bypass authentication, paywalls, robots controls, or a marketplace's terms. HowMuch does not call a product search API or switch to one if browser research fails.
 
 ## Response
 

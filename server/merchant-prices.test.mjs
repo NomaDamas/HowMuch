@@ -1,0 +1,18 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { merchantUrl, productObservations } from './merchant-prices.mjs';
+
+test('only curated public merchant product pages are accepted', () => {
+  assert.equal(merchantUrl('https://www.adafruit.com/product/5812')?.includes('adafruit.com'), true);
+  assert.equal(merchantUrl('https://example.test/item'), null);
+  assert.equal(merchantUrl('https://www.adafruit.com/cart'), null);
+});
+
+test('extracts exact JSON-LD offer and does not invent shipping', () => {
+  const rows = productObservations([{ '@type':'Product', name:'Raspberry Pi 5', offers:{ '@type':'Offer', price:130, priceCurrency:'USD', availability:'https://schema.org/InStock', itemCondition:'https://schema.org/NewCondition' } }], 'https://www.adafruit.com/product/5812');
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].price, 130);
+  assert.equal(rows[0].availability, 'in_stock');
+  assert.equal(rows[0].shipping, undefined);
+  assert.match(rows[0].evidence.at(-1), /not confirmed/i);
+});
