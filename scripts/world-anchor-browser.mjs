@@ -6,6 +6,18 @@ const server=await createServer({server:{host:'127.0.0.1',port:0},logLevel:'erro
 try{
  await server.listen();browser=await chromium.launch({args:['--enable-unsafe-swiftshader']});
  const page=await browser.newPage();await page.goto('http://127.0.0.1:'+server.httpServer.address().port);
+ const privacy=await page.evaluate(async()=>{
+  const {captureMaskedSignature}=await import('/src/lib/xr-target.js'),{cutout}=await import('/src/lib/camera-scene.js');
+  const x=300/960,y=200/720,w=13/960,h=250/720;
+  const s={x,y,width:w,height:h,polygon:[{x,y},{x:x+w,y},{x:x+w,y:y+h},{x,y:y+h}]};
+  async function signature(bg){
+   const c=document.createElement('canvas');c.width=960;c.height=720;const ctx=c.getContext('2d');ctx.fillStyle=bg;ctx.fillRect(0,0,960,720);
+   for(let j=0;j<250;j++){ctx.fillStyle=j%37<18?'white':'black';ctx.fillRect(300,200+j,13,1)}
+   return await captureMaskedSignature(cutout(c,s),s,13/250);
+  }
+  const a=await signature('red'),b=await signature('lime');return [a,b];
+ });
+ assert.ok(privacy[0]?.pts.length>=8);assert.deepEqual(privacy[0],privacy[1],'background must not change a single native or WebXR signature sample');
  const errors=[];page.on('pageerror',e=>errors.push(e.message));await page.evaluate(async()=>{
   const React=(await import('/node_modules/.vite/deps/react.js')).default, {createRoot}=(await import('/node_modules/.vite/deps/react-dom_client.js')).default,Button=(await import('/src/WorldAnchorButton.jsx')).default;
   const ident=()=>new Float32Array([1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1]),transform=()=>({matrix:ident(),inverse:{matrix:ident()},position:{x:0,y:0,z:-1}});
@@ -37,6 +49,8 @@ try{
   const fill=CanvasRenderingContext2D.prototype.fillText;
   CanvasRenderingContext2D.prototype.fillText=function(text,...rest){state.labels.push(text);return fill.call(this,text,...rest)};
   const baseDraw=WebGLRenderingContext.prototype.drawArrays;
+  const uniform=WebGLRenderingContext.prototype.uniformMatrix4fv;
+  WebGLRenderingContext.prototype.uniformMatrix4fv=function(loc,t,m){state.cardScreenX=m[12]/m[15];return uniform.call(this,loc,t,m)};
   WebGLRenderingContext.prototype.drawArrays=function(...args){if(!this.getParameter(this.FRAMEBUFFER_BINDING))state.cardDraws++;return baseDraw.apply(this,args);};
   Object.defineProperty(window,'XRWebGLBinding',{configurable:true,value:class{
    constructor(_session,gl){this.gl=gl;this.tex=gl.createTexture();}
@@ -51,7 +65,11 @@ try{
    activeSession=Object.assign(new EventTarget(),{requestReferenceSpace:async()=>reference,updateRenderState(){},requestAnimationFrame:cb=>state.next=cb,end:async()=>activeSession.dispatchEvent(new Event('end'))});
   }else activeSession=session;return activeSession;};
   const projection=ident();projection[10]=-1.02;projection[11]=-1;projection[14]=-.2;projection[15]=0;
-  const pose=()=>{const m=ident(),inv=ident();if(state.away){m[0]=m[10]=inv[0]=inv[10]=-1;}return {matrix:m,inverse:{matrix:inv}}};
+  const pose=()=>{const m=ident(),inv=ident();if(state.orbit){
+   // Quarter-turn around the established target: fixed center, identical on-screen silhouette.
+   const p=state.autoAnchors[0];m[0]=m[10]=inv[0]=inv[10]=0;m[2]=inv[8]=-1;m[8]=inv[2]=1;
+   m[12]=p.x-p.z;m[14]=p.z+p.x;inv[12]=m[14];inv[14]=-m[12];
+  }else if(state.away){m[0]=m[10]=inv[0]=inv[10]=-1;}return {matrix:m,inverse:{matrix:inv}}};
   const autoFrame={getViewerPose:()=>({transform:pose(),views:[{camera:{width:W,height:H},transform:pose(),projectionMatrix:projection}]}),
    getDepthInformation:()=>{state.depthReads++;return {getDepthInMeters:(x,y)=>(x>=state.objectX/W && x<=(state.objectX+side)/W || x>=96/W && x<=132/W) && y>=top/H && y<=(top+side)/H?state.depth:NaN}},
    createAnchor:async({position})=>{const s={};spacePos.set(s,position);state.autoAnchors.push({...position});return {anchorSpace:s,delete(){spacePos.delete(s);state.autoDeletes++}};},
@@ -76,6 +94,10 @@ try{
  const step=async(n,update)=>page.evaluate(async([n,u])=>{const t=window.xrTest;await t.autoStep(n,u);const s=t.state;return {a:s.autoAnchors,d:s.cardDraws,reads:s.cameraReads,deleted:s.autoDeletes};},[n,update]);
  const initial=await step(4,{});
  assert.ok(initial.reads>=3,'camera texture should be consumed');assert.ok(initial.a.length,'auto should place without a tap');assert.equal(initial.a[0].z,-.8);
+ const originalX=await page.evaluate(()=>window.xrTest.state.cardScreenX);
+ const orbit=await step(3,{orbit:true});assert.equal(orbit.a.length,initial.a.length,'orbit must not replace a stationary center anchor');
+ const newX=await page.evaluate(()=>window.xrTest.state.cardScreenX);assert.ok(Math.abs(newX-originalX)<.002,'billboard should remain beside the silhouette in the current eye');
+ await step(2,{orbit:false});
  const moved=await step(5,{objectX:46});assert.ok(moved.a.length>initial.a.length && moved.a.at(-1).x>initial.a[0].x+.05,'moving object should move the anchor in meters');
  const away=await step(4,{away:true});assert.equal(away.d,moved.d,'no billboard on turned-away view');
  const back=await step(4,{away:false});assert.ok(back.d>away.d,'same object visible again');

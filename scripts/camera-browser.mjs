@@ -5,12 +5,12 @@ import {chromium} from 'playwright';import {createServer} from 'vite';
 const server=await createServer({server:{host:'127.0.0.1',port:0,hmr:false,watch:null},logLevel:'error'});let browser;
 try{await server.listen();browser=await chromium.launch();const page=await browser.newPage({viewport:{width:375,height:720}});const errors=[];page.on('pageerror',e=>errors.push(e.message));
 await page.addInitScript(()=>{const c=document.createElement('canvas');c.width=480;c.height=720;const ctx=c.getContext('2d');let lost=false;
- const draw=()=>{ctx.fillStyle=lost?'#e4fbf8':'#102430';ctx.fillRect(0,0,480,720);if(!lost){for(let j=0;j<720;j+=7)for(let i=0;i<480;i+=7){ctx.fillStyle='rgb('+[(i*j+3*i+j)%255,(j*9+i)%255,(i*2+j*3)%255]+')';ctx.fillRect(i,j,7,7)}}};
- window.setLost=x=>{lost=x;draw()};draw();setInterval(draw,100);Object.defineProperty(navigator.mediaDevices,'getUserMedia',{value:async()=>c.captureStream(10)});
+ const draw=()=>{if(window.reviewScene){const k=window.reviewScene;ctx.fillStyle='#384858';ctx.fillRect(0,0,480,720);if(k!=='missing'){const moved=k==='moved',x=(moved?.68:.38)*480,y=(moved?.50:.35)*720,w=(moved?.25:.18)*480,h=(moved?.25:.18)*720;for(let i=0;i<4;i++)for(let j=0;j<4;j++){ctx.fillStyle=`rgb(${45+i*50},${25+j*62},${45+(i+j)%3*65})`;ctx.fillRect(x+i*w/4,y+j*h/4,w/4+1,h/4+1)}}return;}ctx.fillStyle=lost?'#e4fbf8':'#102430';ctx.fillRect(0,0,480,720);if(!lost){for(let j=0;j<720;j+=7)for(let i=0;i<480;i+=7){ctx.fillStyle='rgb('+[(i*j+3*i+j)%255,(j*9+i)%255,(i*2+j*3)%255]+')';ctx.fillRect(i,j,7,7)}}};
+ window.setLost=x=>{lost=x;window.fixtureLost=x;draw()};draw();setInterval(draw,100);Object.defineProperty(navigator.mediaDevices,'getUserMedia',{value:async()=>c.captureStream(10)});
 });
-const segmentRequests=[],researchRequests=[],pending=[];let holdPrice=false,releasePrice,holdManual=false,releaseManual,manualKind='product',sampleCutout,reshape=false,requireLabel=false;
+const segmentRequests=[],researchRequests=[],pending=[];let trial=false,trialEmpty=0,trialSuccess=0,holdPrice=false,releasePrice,holdManual=false,releaseManual,manualKind='product',sampleCutout,reshape=false,requireLabel=false;
 const shape=(x,y,kind='product')=>({x,y,width:.18,height:.18,kind,polygon:[{x,y},{x:x+.18,y:y+.02},{x:x+.15,y:y+.18},{x,y:y+.14}]});
-await page.route('**/agent/segment',async route=>{const p=route.request().postDataJSON();segmentRequests.push(p);if((p.point||p.selection)&&holdManual){holdManual=false;await new Promise(resolve=>releaseManual=resolve)}const list=p.propagation?[]:p.point||p.selection?[shape(.38,.35,manualKind)]:[shape(.2,.28),shape(.59,.52)];
+await page.route('**/agent/segment',async route=>{const p=route.request().postDataJSON();segmentRequests.push(p);if(trial&&p.propagation){const moved=await page.evaluate(()=>window.reviewScene==='moved');let selections=[];if(moved){const s=p.propagation.selection,map=v=>({x:.68+(v.x-.38)*.25/.18,y:.5+(v.y-.35)*.25/.18});selections=[{...s,x:.68,y:.5,width:.25,height:.25,polygon:s.polygon.map(map),contours:s.contours?.map(r=>r.map(map))}];trialSuccess++}else{trialEmpty++}await route.fulfill({json:{selections,selection:selections[0]??null,mode:'video_propagation'}});return;}if((p.point||p.selection)&&holdManual){holdManual=false;await new Promise(resolve=>releaseManual=resolve)}const list=p.propagation?(await page.evaluate(()=>window.fixtureLost)?[]:[structuredClone(p.propagation.selection)]):p.point||p.selection?[shape(.38,.35,manualKind)]:[shape(.2,.28),shape(.59,.52)];
  list.forEach(s=>{if(reshape){s.polygon[2].x-=.035;s.polygon[2].y-=.018;}s.contours=[s.polygon,s.polygon.map(p=>({x:s.x+s.width*.35+(p.x-s.x)*.25,y:s.y+s.height*.35+(p.y-s.y)*.25}))];if(sampleCutout)s.cutoutDataUrl=sampleCutout;});await route.fulfill({json:{selections:list,selection:list[0],model:'test'}}).catch(()=>{})});
 await page.route('**/api/research',async route=>{const n=researchRequests.length;researchRequests.push(route.request().postDataJSON());if(holdPrice){holdPrice=false;await new Promise(r=>releasePrice=r)}if(n===0)await new Promise(r=>pending.push(r));const t=new Date().toISOString();
  if(requireLabel && !researchRequests[n].labelDataUrl)return route.fulfill({json:{candidates:[{name:'안경',confidence:1}],offers:[],pricingMode:'exact_model',status:'followup_required',followup:{reason:'exact_model_not_visible',prompt:'라벨을 비춰 주세요.'},startedAt:t,completedAt:t,tools:['identify_object']}});
@@ -31,10 +31,9 @@ await mode('터치·그리기');await waitN(2); // finished automatic jobs survi
 const invalidBefore=segmentRequests.length;
 await page.evaluate(()=>{document.querySelector('video').srcObject.getVideoTracks()[0].enabled=false;});
 await waitN(0);await tap();await page.waitForTimeout(200);assert.equal(segmentRequests.length,invalidBefore,'disabled camera does not submit');
-await page.evaluate(()=>{document.querySelector('video').srcObject.getVideoTracks()[0].enabled=true;});await page.waitForTimeout(1500);
-assert.equal(await page.locator('.card').count(),2,JSON.stringify(await page.evaluate(()=>{const v=document.querySelector('video'),t=v.srcObject.getVideoTracks()[0];return {ready:v.readyState,dimensions:[v.videoWidth,v.videoHeight],enabled:t.enabled,muted:t.muted,buttons:[...document.querySelectorAll('header button')].map(b=>b.textContent),hint:document.querySelector('.hint').textContent}}))+JSON.stringify(errors));
+await page.evaluate(()=>{document.querySelector('video').srcObject.getVideoTracks()[0].enabled=true;});await waitN(2);
 await page.evaluate(()=>{const v=document.querySelector('video');Object.defineProperty(v,'videoHeight',{value:0,configurable:true});});
-await waitN(0);await tap();await page.waitForTimeout(200);assert.equal(segmentRequests.length,invalidBefore,'zero-dimension camera does not submit');
+const zeroManual=segmentRequests.filter(p=>p.point||p.selection).length;await waitN(0);await tap();await page.waitForTimeout(200);assert.equal(segmentRequests.filter(p=>p.point||p.selection).length,zeroManual,'zero-dimension camera does not submit manual selection');
 await page.evaluate(()=>{delete document.querySelector('video').videoHeight;});await waitN(2);
 const autoIds=await page.locator('.card').evaluateAll(ns=>ns.map(n=>n.dataset.objectId));
 holdManual=true;await tap();await page.waitForTimeout(120);assert(releaseManual,'manual segmentation pending');
@@ -54,6 +53,29 @@ holdManual=true;await tap();await page.waitForTimeout(140);const releaseNewer=re
 await openList();const heldIds=await list.getByRole('button',{name:/조사 취소/}).evaluateAll(ns=>ns.map(n=>n.getAttribute('aria-label').match(/물체 (\d+)/)[1]));assert.equal(heldIds.length,2);await closeList();
 holdPrice=true;releaseNewer();await waitN(1);await page.locator('.card[data-phase="identifying"]').waitFor();assert(releasePrice);
 await cancelInList(heldIds[1]);await cancelInList(heldIds[0]);releaseOlder();releasePrice();await page.waitForTimeout(250);await waitN(0);await openList();assert.equal(await list.locator('.job-row').count(),0);await closeList();
+// Two freehand selections, not just point prompts. The first price is still
+// pending when the second finishes. Removing the second leaves the first live.
+const draw=async(dx)=>{await page.mouse.move(25+dx,365);await page.mouse.down();await page.mouse.move(60+dx,375,{steps:4});await page.mouse.move(45+dx,410,{steps:4});await page.mouse.move(25+dx,365,{steps:4});await page.mouse.up();};
+holdPrice=true;releasePrice=null;await draw(0);await page.locator('.card[data-phase="identifying"]').waitFor();
+const firstDrawing=await page.locator('.card').getAttribute('data-object-id');
+await draw(16);await waitN(2);await page.locator('.card[data-phase="complete"]').waitFor();
+assert.equal(await page.locator('.card[data-phase="identifying"]').getAttribute('data-object-id'),firstDrawing);
+await cancelInList(await page.locator('.card[data-phase="complete"]').getAttribute('data-object-id'));
+releasePrice();await waitN(1);await page.locator('.card[data-phase="complete"]').waitFor();
+assert.equal(await page.locator('.card').getAttribute('data-object-id'),firstDrawing);await cancelInList(firstDrawing);
+// Manual-only regression: first SAM propagation cannot recover the object; the
+// details sheet interrupts retries. Its return at a new scale/position must update
+// the old mask without sending another price request or adopting a new track ID.
+trial=true;await page.evaluate(()=>{window.reviewScene='original'});await page.waitForTimeout(350);await tap();await page.locator('.card[data-phase="complete"]').waitFor();
+const trialId=await page.locator('.card').getAttribute('data-object-id'),trialPrices=researchRequests.length,oldPath=await page.locator('.contours path').getAttribute('d');
+await page.evaluate(()=>{window.reviewScene='missing'});await waitN(0);
+for(let n=0;n<35&&!trialEmpty;n++)await page.waitForTimeout(200);assert(trialEmpty,'first video propagation returned no mask');
+await openList();await list.locator('.job-row button').first().click();const sheet=page.getByRole('dialog',{name:'가격 근거'});await sheet.waitFor();
+await page.evaluate(()=>{window.reviewScene='moved'});await page.waitForTimeout(5000);assert.equal(trialSuccess,0,'no propagation while details sheet is open');
+await sheet.getByRole('button',{name:'카메라로 돌아가기'}).click();await waitN(1);assert(trialSuccess,'SAM recovered shifted scaled manual object');
+assert.equal(await page.locator('.card').getAttribute('data-object-id'),trialId);assert.notEqual(await page.locator('.contours path').getAttribute('d'),oldPath);
+assert.equal(researchRequests.length,trialPrices,'recovered original item reuses its price');await cancelInList(trialId);
+trial=false;await page.evaluate(()=>{window.reviewScene=null});await page.waitForTimeout(300);
 const before=segmentRequests.length;await page.mouse.move(55,260);await page.mouse.down();await page.mouse.move(90,250,{steps:8});await page.waitForTimeout(800);assert.equal(segmentRequests.length,before,'long press must not fire during drag');await page.mouse.move(150,285,{steps:8});await page.mouse.move(90,340,{steps:8});await page.mouse.move(55,260,{steps:8});await page.mouse.up();await waitN(1);assert(segmentRequests.at(-1).selection.polygon.length>=4);assert.equal(segmentRequests.length,before+1);
 await cancelInList(await page.locator('.card').getAttribute('data-object-id'));await page.mouse.move(95,320);await page.mouse.down();await page.waitForTimeout(740);await page.mouse.up();await waitN(1);assert.equal(segmentRequests.length,before+2);assert(segmentRequests.at(-1).point?.x>0);await cancelInList(await page.locator('.card').getAttribute('data-object-id'));
 requireLabel=true;

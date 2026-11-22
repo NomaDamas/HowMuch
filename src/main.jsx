@@ -2,7 +2,7 @@ import React,{useEffect,useLayoutEffect,useRef,useState} from 'react';
 import {createRoot} from 'react-dom/client';
 import {ScanLine,Settings,Hand,Crosshair,ChevronRight,Camera,ExternalLink} from 'lucide-react';
 import Pairing from './Pairing.jsx';
-import {captureTemplate} from './lib/xr-target.js';
+import {previewTemplate,captureMaskedSignature} from './lib/xr-target.js';
 import WorldAnchorButton from './WorldAnchorButton.jsx';
 import {summarizeCard,spatialHandoff} from './lib/price-card.js';
 import {discoveryLabel} from './lib/market-display.js';
@@ -80,7 +80,12 @@ function App(){
  }
  function pauseForSpatial(){spatial.current=true;++cameraJob.current;segmentController.current?.abort();setReady(false);stream.current?.getTracks().forEach(t=>t.stop());stream.current=null;if(v.current)v.current.srcObject=null}
  function resumeFromSpatial(){spatial.current=false;if(alive.current)void startCamera()}
- function bindTrack(o,s,source){o.reference={frame:source,selection:s};if(!o.template)o.template=captureTemplate(source,s);o.stop?.();o.selection=s;o.position=s;o.refineNeeded=false;
+ function bindTrack(o,s,source){o.reference={frame:source,selection:s};if(!o.template)o.template=previewTemplate(source,s);
+  if(!o.signaturePending&&!o.signature&&!person(s)){
+   o.signaturePending=true;
+   void captureMaskedSignature(s.cutoutDataUrl||cutout(source,s),s,s.width*source.width/(s.height*source.height))
+    .then(t=>{if(t&&jobs.current.get(o.id)===o){o.signature=t;sync()}}).catch(()=>{}).finally(()=>{o.signaturePending=false});
+  }o.stop?.();o.selection=s;o.position=s;o.refineNeeded=false;
   o.stop=trackPreview(v.current,s,next=>{if(jobs.current.get(o.id)!==o)return;
    if(!next||overlap(o.reference.selection,next)<.74)o.refineNeeded=true;
    o.position=next;sync();
@@ -100,7 +105,9 @@ function App(){
     const found=(r.selections??(r.selection?[r.selection]:[])).filter(s=>s.polygon?.length>=3).slice(0,manual?1:4);
     const claimed=new Set();
     for(const s of found){
-     if(!manual&&ignored.current.some(p=>overlap(p,s)>.55))continue;
+     // A dismissed location suppresses new automatic jobs, never a refresh
+     // of another live job, even when their selections overlap completely.
+     if(!manual&&!refresh&&ignored.current.some(p=>overlap(p,s)>.55))continue;
      if(refresh){
        if(jobs.current.get(refresh.id)!==refresh)continue;
        const orig=previous.get(refresh.id),now=refresh.position;
@@ -134,12 +141,13 @@ function App(){
  useEffect(()=>{try{localStorage.setItem('howmuch-mode',mode)}catch{}wipe();segmentController.current?.abort();},[mode]);
  useEffect(()=>{if(!ready)return;
     let cursor=0;
-    const timer=setInterval(()=>{if(gesture.current||document.hidden||segmentController.current||spatial.current)return;
-     const candidates=Array.from(jobs.current.values()).filter(o=>o.reference&&o.refineNeeded);
+    const timer=setInterval(()=>{if(gesture.current||document.hidden||segmentController.current||spatial.current||!canCapture(v.current))return;
+     const now=performance.now();
+     const candidates=Array.from(jobs.current.values()).filter(o=>o.reference&&(o.refineNeeded||(!o.position&&now-(o.refinedAt||0)>4000)));
      if(!candidates.length)return;
      const o=candidates[cursor++%candidates.length],s=o.reference.selection;
      const previousImageDataUrl=o.reference.frame.toDataURL('image/jpeg',.72);
-     o.refineNeeded=false;
+     o.refineNeeded=false;o.refinedAt=now;
      void discover({propagation:{previousImageDataUrl,selection:{x:s.x,y:s.y,width:s.width,height:s.height,polygon:s.polygon,contours:s.contours}}},o);
     },1200);return()=>clearInterval(timer);
  },[mode,ready]);
@@ -164,9 +172,9 @@ function App(){
   c.classList.add('fade');fade.current=setTimeout(()=>{if(!gesture.current)wipe()},800);}
  const visible=[];if(canCapture(v.current))for(const o of items){if(!o.position)continue;const s=toScreen(o.position,size,v.current);if(s.x+s.width<=0||s.x>=1||s.y+s.height<=0||s.y>=1)continue;
   const box=boxForHud(s,size,measured[o.id]||{width:Math.min(164,size.width*.44),height:88},visible.map(x=>x.box));visible.push({o,s,box});}
- const xrCards=items.filter(o=>o.template&&o.phase!=='person').map(o=>{
+ const xrCards=items.filter(o=>o.signature&&o.phase!=='person').map(o=>{
   const d=summarizeCard(o.result), identity=o.result?.identity, name=identity?[identity.brand,identity.model].join(' '):o.result?.candidates?.[0]?.name||o.candidate?.name;
-  return {id:o.id,target:o.template,title:name||'선택한 물체',price:o.phase==='identifying'?'물체 식별 중':o.phase==='loading'?'시세 조사 중':d.label||d.price};
+  return {id:o.id,target:o.signature,title:name||'선택한 물체',price:o.phase==='identifying'?'물체 식별 중':o.phase==='loading'?'시세 조사 중':d.label||d.price};
  });
  const selected=items.find(o=>o.id===detail);
  const isCapturing=captureId!=null;
@@ -197,7 +205,7 @@ function Evidence({o,close,click,fun,beginLabel,pause,resume}){
  const r=o.result,display=summarizeCard(r),c=r?.candidates?.[0]??o.candidate;
  const title=r?.identity?.model?[r.identity.brand,r.identity.model].filter(Boolean).join(' '):c?.name;
  const market=r?.produceMarket,repr=r?.representative,proof=r?.identity?.modelEvidence;
- const nativeURL=spatialHandoff(title,display.label,o.template);
+ const nativeURL=spatialHandoff(title,display.label,o.signature);
  const mobile=/(iPhone|iPad|Android)/i.test(navigator.userAgent)||navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1;
  return <div className="back" onClick={close}><section className="sheet" role="dialog" aria-label="가격 근거" onClick={e=>e.stopPropagation()}>
  <small>FIELD NOTES / 조회 근거</small><h2>{title||(o.phase==='person'?'사람 캐릭터':'상품 확인 중')}</h2>
@@ -213,6 +221,6 @@ function Evidence({o,close,click,fun,beginLabel,pause,resume}){
  {repr?.exchange&&<p>환산 기준: <a href={repr.exchange.url} rel="noreferrer" target="_blank">ECB {repr.exchange.date}</a></p>}
  {r?.offers.map((a,i)=><a key={i} className="source" href={a.url} target="_blank" rel="noopener noreferrer" onClick={click}><strong>{a.title}</strong><span>{a.merchant} · {money(a.price,a.currency)} <ExternalLink size={13}/></span><small>{a.condition==='new'?'새 상품':a.condition==='used'?'중고':'상태 미확인'} · {a.availability==='in_stock'?'재고 있음':a.availability==='out_of_stock'?'품절':'재고 미확인'} · {a.shipping==null?'배송비 미확인':'배송비 '+money(a.shipping,a.currency)} · {clock(a.checkedAt)}</small>{a.evidence?.map((e,j)=><small key={j}>{e}</small>)}</a>)}
  {discoveryLabel(r?.discovery)&&<p>{discoveryLabel(r.discovery)}</p>}
- {nativeURL&&<><WorldAnchorButton title={title} price={display.label} target={o.template} onSessionStart={pause} onSessionEnd={resume}/>{mobile&&<a className="option" href={nativeURL} title="같은 상품 확인을 위해 누끼 내부의 색상 표본을 설치한 앱에 전달합니다">HowMuch AR에서 열기</a>}</>}
+ {nativeURL&&<><WorldAnchorButton title={title} price={display.label} target={o.signature} onSessionStart={pause} onSessionEnd={resume}/>{mobile&&<a className="option" href={nativeURL} title="같은 상품 확인을 위해 누끼 내부의 색상 표본을 설치한 앱에 전달합니다">HowMuch AR에서 열기</a>}</>}
  </>}<button className="primary" onClick={close}>카메라로 돌아가기</button></section></div>}
 createRoot(document.getElementById('root')).render(<App/>);

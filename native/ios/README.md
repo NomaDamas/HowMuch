@@ -8,4 +8,6 @@ The app uses ARFrame.displayTransform for the current interface orientation, sam
 
 Build using the existing Xcode project: xcodebuild -quiet -project native/ios/HowMuchAR.xcodeproj -scheme HowMuchAR -configuration Release -sdk iphoneos -destination generic/platform=iOS -derivedDataPath .howmuch/ios-build CODE_SIGNING_ALLOWED=NO build
 
+The automatic ARAnchor marks the measured center of the product, not the price label. When the viewer walks around a stationary product, each confirmed camera measurement updates the child billboard's side offset relative to that view. This keeps the label beside the visible outline without replacing the anchor merely because the viewing angle changed. Manual tap placement retains the chosen surface pose.
+
 An unsigned arm64 device Release build verifies the SDK integration. On-device depth accuracy, robustness to rotations/lighting changes, and tracking/relocalization around moving products remain physical iPhone QA gates.

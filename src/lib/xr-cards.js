@@ -29,11 +29,12 @@ export function createXrCards(gl,ref){
    const pos=!conflict&&depth&&match&&targetWorld(s.target,match,depth,eye);
    if(!pos){s.visible=false;s.streak=0;s.lastPoint=null;continue}
    s.streak=s.lastPoint&&distance(pos,s.lastPoint)<.10?s.streak+1:1;s.lastPoint=pos;s.visible=s.streak>=2;
-   if(!s.visible||s.pending)continue;
+   if(!s.visible)continue;
+   const m=eye.transform.inverse.matrix,z=-(m[2]*pos.x+m[6]*pos.y+m[10]*pos.z+m[14]);
+   s.side=(match.x>.58?-1:1)*(.12+match.w*z/eye.projectionMatrix[0]);
+   if(s.pending)continue;
    const current=s.anchor?f.getPose(s.anchor.anchorSpace,ref)?.transform.position:s.position;
    if(current&&distance(pos,current)<=.035)continue;
-   const m=eye.transform.inverse.matrix,z=-(m[2]*pos.x+m[6]*pos.y+m[10]*pos.z+m[14]),side=(match.x>.58?-1:1)*(.12+match.w*z/eye.projectionMatrix[0]);
-   s.offset={x:eye.transform.matrix[0]*side,y:eye.transform.matrix[1]*side,z:eye.transform.matrix[2]*side};
    s.position={...pos};const ticket=++s.ticket;s.anchor?.delete();s.anchor=null;
    if(typeof f.createAnchor==='function'){s.pending=true;try{f.createAnchor(new XRRigidTransform(pos),ref).then(a=>{if(ticket!==s.ticket)a.delete();else s.anchor=a}).catch(()=>{}).finally(()=>{if(ticket===s.ticket)s.pending=false});}catch{s.pending=false}}
   }
@@ -45,7 +46,8 @@ export function createXrCards(gl,ref){
    sample(f,head,im,depth);
   }
   let count=0;for(const s of slots.values()){if(!s.visible)continue;const pos=s.anchor?f.getPose(s.anchor.anchorSpace,ref)?.transform.position:s.position;if(!pos)continue;
-   const model=cardTransform(pos,head.transform.matrix,s.offset);for(const eye of head.views){const vp=layer.getViewport(eye);if(vp)s.renderer.draw(eye,vp,model,true)}count++;
+   const m=head.transform.matrix,side=s.side;
+   const model=cardTransform(pos,m,{x:m[0]*side,y:m[1]*side,z:m[2]*side});for(const eye of head.views){const vp=layer.getViewport(eye);if(vp)s.renderer.draw(eye,vp,model,true)}count++;
   }return count;
  }};
 }

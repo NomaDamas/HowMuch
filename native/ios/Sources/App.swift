@@ -115,13 +115,21 @@ final class PriceScene: UIViewController, ARSCNViewDelegate {
         guard streak>=2 else{return}
         detected=true
         if let p=placed,let pinned,simd_distance(p.center,t.center)<0.055 {
-            scene.node(for:pinned)?.isHidden=false;guide.text="상품 위치 확인 · 자동 추적";return
+            if let node=scene.node(for:pinned){
+                node.childNode(withName:"priceLabel",recursively:false)?.simdWorldPosition=node.simdWorldPosition+labelOffset(t)
+                node.isHidden=false
+            }
+            guide.text="상품 위치 확인 · 자동 추적";return
         }
-        clear();var m=matrix_identity_float4x4;m.columns.3=SIMD4(t.card,1)
+        clear();var m=matrix_identity_float4x4;m.columns.3=SIMD4(t.center,1)
         let a=ARAnchor(name:"HowMuchProduct",transform:m);pinned=a;placed=t;scene.session.add(anchor:a)
         guide.text="확인된 상품 옆에 고정했습니다."
     }
     private func clear(){if let old=pinned {scene.session.remove(anchor:old)}; pinned=nil}
+    private func labelOffset(_ target:TargetLocation?)->SIMD3<Float>{
+        let alongside=target.map{$0.card-$0.center} ?? .zero
+        return alongside+SIMD3<Float>(0,0.065,0)
+    }
     @objc private func place(_ gesture:UITapGestureRecognizer) {
         guard !autoMode,sessionRunning else{return}
         guard card != nil, hasTracking,
@@ -139,8 +147,8 @@ final class PriceScene: UIViewController, ARSCNViewDelegate {
                 (price as NSString).draw(in:CGRect(x:34,y:126,width:652,height:118),withAttributes:[.font:UIFont.systemFont(ofSize:42),.foregroundColor:UIColor.systemGreen,.paragraphStyle:p])
             }
             let plane=SCNPlane(width:0.19,height:0.071);plane.firstMaterial?.diffuse.contents=texture;plane.firstMaterial?.lightingModel = .constant;plane.firstMaterial?.isDoubleSided=true
-            let label=SCNNode(geometry:plane);node.addChildNode(label)
-            label.simdWorldPosition=node.simdWorldPosition+SIMD3<Float>(0,0.065,0);label.constraints=[SCNBillboardConstraint()]
+            let label=SCNNode(geometry:plane);label.name="priceLabel";node.addChildNode(label)
+            label.simdWorldPosition=node.simdWorldPosition+self.labelOffset(self.autoMode ? self.measured:nil);label.constraints=[SCNBillboardConstraint()]
             node.isHidden = !self.hasTracking || (self.autoMode && !self.detected)
         }
     }

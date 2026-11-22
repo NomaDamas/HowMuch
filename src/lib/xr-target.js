@@ -7,12 +7,18 @@ function inside(x,y,rings){
  }return ok;
 }
 const pixel=(im,x,y)=>4*(Math.min(im.height-1,Math.max(0,Math.floor(y*im.height)))*im.width+Math.min(im.width-1,Math.max(0,Math.floor(x*im.width))));
-export function templateFrom(im,s){
+export function templateFrom(im,s,opaqueInterior=false){
  const pts=[],cx=s.x+s.width/2,cy=s.y+s.height/2;
  for(let j=0;j<11;j++)for(let i=0;i<11;i++){
   const dx=(i+.5)/11-.5,dy=(j+.5)/11-.5,x=cx+dx*s.width,y=cy+dy*s.height;
   if(!inside(x,y,s.contours?.length?s.contours:[s.polygon]))continue;
-  const k=pixel(im,x,y);pts.push([dx,dy,...im.data.slice(k,k+3)]);
+  const k=pixel(im,x,y);
+  if(opaqueInterior){ // Exclude boundaries, transparent holes and antialiasing. No texture resizing before this gate.
+   const u=Math.floor(x*im.width),v=Math.floor(y*im.height);
+   if(u<1||v<1||u+1>=im.width||v+1>=im.height)continue;
+   if([-1,0,1].some(j=>[-1,0,1].some(i=>im.data[k+4*(i+j*im.width)+3]!==255)))continue;
+  }
+  pts.push([dx,dy,...im.data.slice(k,k+3)]);
  }
  if(pts.length<8)return null;
  const mean=[0,1,2].map(i=>pts.reduce((a,p)=>a+p[i+2],0)/pts.length);
@@ -73,6 +79,19 @@ export function targetWorld(t,match,depth,view){
  const P=view.projectionMatrix,T=view.transform.matrix,z=mid,x=((2*match.x-1+P[8])/P[0])*z,y=((1-2*match.y+P[9])/P[5])*z;
  return {x:T[0]*x+T[4]*y-T[8]*z+T[12],y:T[1]*x+T[5]*y-T[9]*z+T[13],z:T[2]*x+T[6]*y-T[10]*z+T[14]};
 }
-export function captureTemplate(canvas,s){
+// In-process preview matching only. Never serialize samples from the unmasked preview.
+export function previewTemplate(canvas,s){
  const c=document.createElement('canvas');c.width=160;c.height=Math.max(1,Math.round(canvas.height*160/canvas.width));const ctx=c.getContext('2d');ctx.drawImage(canvas,0,0,c.width,c.height);return templateFrom(ctx.getImageData(0,0,c.width,c.height),s);
+}
+
+// Source must be the selected object's RGBA cutout. Never resample the full scene for handoff.
+export async function captureMaskedSignature(png,s,aspect){
+ if(!png?.startsWith('data:image/png;base64,'))return null;
+ const img=new Image();img.src=png;await img.decode();
+ if(img.width*img.height>12_000_000)return null;
+ const c=document.createElement('canvas');c.width=img.width;c.height=img.height;
+ const ctx=c.getContext('2d');ctx.drawImage(img,0,0);
+ const mask={x:0,y:0,width:1,height:1,polygon:[{x:0,y:0},{x:1,y:0},{x:1,y:1},{x:0,y:1}]};
+ const t=templateFrom(ctx.getImageData(0,0,c.width,c.height),mask,true);
+ return t&&{...t,height:s.height,aspect};
 }
