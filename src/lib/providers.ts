@@ -16,9 +16,9 @@ async function failure(response: Response, label: string) {
 
 export class HttpSegmentationProvider {
   constructor(private readonly endpoint: string) {}
-  async segment(input: { imageDataUrl: string; point?: Point; selection?: NormalizedSelection; signal?: AbortSignal }) {
+  async segment(input: { imageDataUrl: string; point?: Point; selection?: NormalizedSelection; propagation?: {previousImageDataUrl:string;selection:NormalizedSelection}; signal?: AbortSignal }) {
     const response = await fetch(this.endpoint, { method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({image:input.imageDataUrl, point:input.point, selection:input.selection}), signal:input.signal });
+      body: JSON.stringify({image:input.imageDataUrl, point:input.point, selection:input.selection,propagation:input.propagation}), signal:input.signal });
     if (!response.ok) throw new Error(await failure(response, '물체 윤곽 인식'));
     const data = await response.json();
     const list = data.selections ?? (data.selection ? [data.selection] : null);

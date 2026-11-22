@@ -20,7 +20,7 @@ Use these issue keys in GitHub. Each parent issue must link its sub-issues and m
 - HM-2.4 Occlusion/loss timeout and reacquisition
 - HM-2.5 Edge-aware 3D-like HUD placement and perspective
 - HM-2.6 Segmentation-first dashed preview before identity; never a full-screen panel.
-- HM-2.7 Multi-object registry with stable track IDs, up to four independent automatic research jobs/cards, tap-to-switch, and an active-card/cost cap. Manual mode researches only the drawn subject.
+- HM-2.7 Multi-object registry with stable track IDs, up to four independent automatic research jobs/cards, tap-to-switch, and an active-card/cost cap. Each manual selection adds its own subject; previous investigations continue until individually dismissed.
 - HM-2.8 Acquire/lost hysteresis to prevent flicker during brief occlusion.
 - HM-2.9 Camera transform tests for cover, rotation, mirror, and safe areas.
 

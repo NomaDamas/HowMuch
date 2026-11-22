@@ -35,6 +35,7 @@ export function productObservations(docs, pageUrl, checkedAt = new Date().toISOS
       const evidence=[`Product: ${node.name}`,`Offer.price: ${price} ${currency}`,`Availability: ${availability}; condition: ${condition}`,shipping===undefined?'Shipping not confirmed':`Shipping: ${shipping} ${currency}`];
       const photo = array(node.image)[0];
       observations.push({title:node.name.slice(0,240),url:pageUrl,merchant:new URL(pageUrl).hostname,price,currency,condition,availability,shipping,checkedAt,evidence,confidence:.9,model:String(node.model || node.mpn || '').slice(0,100),sku:String(node.sku || '').slice(0,100),photo:typeof photo==='string'?photo:photo?.contentUrl || photo?.url});
+      if(typeof node.material==='string')observations.at(-1).sourceMaterial=node.material.slice(0,100);
     }
   }
   docs.forEach(inspect); return observations;

@@ -22,6 +22,11 @@ async function readBody(req,limit=16000000) {
 export async function researchAgent(input, signal, onPhase) {
   if (!process.env.RESEARCH_AGENT_ENDPOINT) throw Object.assign(Error(), {status:503});
   const image=input.imageDataUrl||input.image, cutout=input.cutoutDataUrl||input.cutout;
+  const validated=raw=>{
+    const result=assertResearchEnvelope(raw);
+    if(result.referenceMarket?.scope?.kind==='basic-tee'&&!input.labelDataUrl)throw Error('reference_label_required');
+    return result;
+  };
   const streamed=typeof onPhase==='function';
   const response=await fetch(process.env.RESEARCH_AGENT_ENDPOINT,{method:'POST',signal,
     headers:{'content-type':'application/json',accept:streamed?'application/x-ndjson':'application/json'},body:JSON.stringify({
@@ -32,12 +37,12 @@ export async function researchAgent(input, signal, onPhase) {
       tools:['visual_search','text_search','open_page','extract_offer','compare_offers']
     })});
   if (!response.ok) throw Object.assign(Error('research_agent_unavailable'),{status:response.status});
-  if (!streamed || !response.headers.get('content-type')?.includes('application/x-ndjson')) return assertResearchEnvelope(await response.json());
+  if (!streamed || !response.headers.get('content-type')?.includes('application/x-ndjson')) return validated(await response.json());
   let buffer='',result,researching=false;
   function parseLine(line){
     const event=JSON.parse(line);
     if(event.error)throw Error('research_failed');
-    if(event.result){result=assertResearchEnvelope(event.result);return}
+    if(event.result){result=validated(event.result);return}
     if(event.phase==='researching'&&!researching&&!result){
       researching=true;
       const candidate=event.candidate;

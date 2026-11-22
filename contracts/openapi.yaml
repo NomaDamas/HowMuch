@@ -63,6 +63,18 @@ paths:
                 imageDataUrl: { type: string, pattern: '^data:image/' }
                 point: { type: object, properties: { x: {type: number}, y: {type: number} } }
                 selection: { $ref: '#/components/schemas/Selection' }
+                propagation:
+                  type: object
+                  description: 'Transfer a previous mask to the current frame. Omit point/selection at the top level.'
+                  required: [previousImageDataUrl, selection]
+                  properties:
+                    previousImageDataUrl: { type: string, pattern: '^data:image/' }
+                    selection:
+                      type: object
+                      required: [polygon]
+                      properties:
+                        polygon: { $ref: '#/components/schemas/Ring' }
+                        contours: { type: array, maxItems: 16, items: { $ref: '#/components/schemas/Ring' } }
       responses:
         '200': { description: All selected masks, with normalized bounds and contour }
         '422': { description: Frame could not be segmented }
@@ -90,6 +102,11 @@ paths:
         '200': { description: Session revoked by desktop or owning phone }
 components:
   schemas:
+    Ring:
+      type: array
+      minItems: 3
+      maxItems: 4096
+      items: { type: object, required: [x,y], properties: { x: {type: number, minimum: 0, maximum: 1}, y: {type: number, minimum: 0, maximum: 1} } }
     Selection:
       type: object
       required: [x,y,width,height]
@@ -131,7 +148,36 @@ components:
       required: [status,candidates,offers,tools,startedAt,completedAt]
       properties:
         status: { type: string, enum: [complete, completed, partial, followup_required, no_result, research_unavailable, error] }
-        pricingMode: { type: string, enum: [exact_model, produce_market, verified_offer] }
+        pricingMode: { type: string, enum: [exact_model, produce_market, verified_offer, category_reference] }
+        referenceMarket:
+          type: object
+          description: 'Prices of other items, never an offer for the selected object. Each listing is a pack price; do not mix currencies or units.'
+          required: [scope, listings]
+          properties:
+            scope:
+              type: object
+              required: [kind, material, visualEvidence]
+              properties:
+                kind: { type: string, enum: [mug, bowl, plate, tumbler, basic-tee] }
+                material: { type: string }
+                visualEvidence: { type: string }
+                labelEvidence: { type: string }
+            listings:
+              type: array
+              minItems: 1
+              maxItems: 4
+              items:
+                allOf:
+                  - { $ref: '#/components/schemas/Offer' }
+                  - type: object
+                    required: [quantity, unit, quantityEvidence, basis, kind, material]
+                    properties:
+                      quantity: { type: integer, minimum: 1 }
+                      unit: { type: string, enum: ['개', '장'] }
+                      quantityEvidence: { type: string }
+                      basis: { type: string, enum: [item_only] }
+                      kind: { type: string, enum: [mug, bowl, plate, tumbler, basic-tee] }
+                      material: { type: string }
         followup:
           type: object
           required: [reason, prompt]

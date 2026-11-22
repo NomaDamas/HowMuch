@@ -70,7 +70,7 @@ Analyze API -> segmentation adapter + VLM adapter + search orchestrator
 - **5.1 Progressive states:** identifying, checking prices, final evidence-backed card.
 - **5.2 Placement:** beside object, edge-aware side flipping, and no default occlusion.
 - **5.3 Detail sheet:** sources, breakdown, confidence, retry, and better-view action.
-- **5.4 Multi-object:** up to four independent stable automatic subjects/cards; manual selection starts only one.
+- **5.4 Multi-object:** up to four independent stable automatic subjects/cards; each manual gesture adds one without replacing previous jobs.
 - **5.5 Person mode:** explicit opt-in, style/card output only, safety copy, and data minimization.
 
 ### E6 API, observability, privacy

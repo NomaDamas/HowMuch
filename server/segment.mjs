@@ -8,6 +8,8 @@ const python = process.env.HOWMUCH_SAM_PYTHON || root + '.howmuch/sam/venv/bin/p
 const failure = (msg, status) => Object.assign(new Error(msg), {status});
 const unit = n => Number.isFinite(n) && n >= 0 && n <= 1;
 const isPoint = p => p && unit(p.x) && unit(p.y);
+const imageOK = s => typeof s === 'string' && s.length <= 8_000_000 && /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/]+=*$/i.test(s);
+const ringOK = r => Array.isArray(r) && r.length >= 3 && r.length <= 4096 && r.every(isPoint);
 let worker, pending;
 const queue = [];
 
@@ -65,12 +67,23 @@ function finish(error, result, again = true) {
   if (error) request.reject(error); else request.resolve(result);
   if (again) queueMicrotask(pump);
 }
-export function segment(body = {}) {
+export function segment(body = {}, {signal} = {}) {
+  signal?.throwIfAborted();
   const image = body.imageDataUrl || body.image;
-  if (typeof image !== 'string' || image.length > 8_000_000 ||
-      !/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/]+=*$/i.test(image))
+  if (!imageOK(image))
     throw failure('Invalid segmentation image', 400);
   const {point, selection} = body;
+  let propagation;
+  if (body.propagation != null) {
+    const {previousImageDataUrl,selection:seed} = body.propagation;
+    const rings = seed?.contours;
+    if (point != null || selection != null || !imageOK(previousImageDataUrl) || !ringOK(seed?.polygon) ||
+        (rings != null && (!Array.isArray(rings) || !rings.length || rings.length>16 ||
+        !rings.every(r=>ringOK(r)) || rings.reduce((total,r)=>total+r.length,0)>4096)))
+      throw failure('Invalid video propagation seed',400);
+    const clean = r => r.map(({x,y})=>({x,y}));
+    propagation = { previousImageDataUrl, selection: {polygon:clean(seed.polygon), ...(rings&&{contours:rings.map(clean)})} };
+  }
   if (point != null && !isPoint(point)) throw failure('Invalid selection point', 400);
   if (selection != null && (!isPoint(selection) || !unit(selection.width) || !unit(selection.height) ||
       selection.width <= 0 || selection.height <= 0 || selection.x+selection.width > 1.000001 ||
@@ -78,5 +91,16 @@ export function segment(body = {}) {
       (selection.polygon && (!Array.isArray(selection.polygon) || selection.polygon.length > 4096 ||
       !selection.polygon.every(isPoint))))) throw failure('Invalid selection bounds', 400);
   if (queue.length >= 4) throw failure('Segmentation is busy', 429);
-  return new Promise((resolve, reject) => { queue.push({body:{image, point, selection}, resolve, reject}); pump(); });
+  return new Promise((resolve,reject)=>{
+    const cleanup=()=>signal?.removeEventListener('abort',onAbort);
+    const request={body:{image,point,selection,propagation},resolve:value=>{cleanup();resolve(value)},reject:err=>{cleanup();reject(err)}};
+    function onAbort(){
+      const i=queue.indexOf(request);if(i>=0)queue.splice(i,1);
+      // A shared worker must finish an in-flight inference before reading the next reply.
+      // Drop its reply, but never stop the worker or consume the next subject's mask.
+      request.reject(signal.reason);
+    }
+    signal?.addEventListener('abort',onAbort,{once:true});
+    queue.push(request);pump();
+  });
 }
