@@ -2,6 +2,7 @@ const CURRENCIES = new Set(['KRW', 'USD', 'JPY', 'EUR']);
 const CONDITIONS = new Set(['new', 'used', 'unknown']);
 const isFiniteNumber = (value) => typeof value === 'number' && Number.isFinite(value);
 const isHttpUrl = (value) => typeof value === 'string' && /^https?:\/\//i.test(value);
+import { commodityFor, produceSource } from './produce-market.mjs';
 import { identityProof, modelMatches, needsModel } from './identity-market.mjs';
 
 export function isValidResearchInput(body) {
@@ -30,14 +31,19 @@ export function isValidResearchResult(result) {
   if(result.offers.length&&(result.pricingMode==='exact_model'||needsModel(result.candidates[0]))){
     const i=result.identity || {};
     const proof=identityProof({...i,visibleModelEvidence:i.modelEvidence});
-    if(!proof||!result.offers.every(o=>modelMatches(o,proof)))return false;
+    const selected=result.candidates[0], canon=v=>typeof v==='string'?v.trim().normalize('NFKC').toLowerCase():'';
+    if(!proof||!selected||canon(selected.brand)!==canon(proof.brand)||canon(selected.model)!==canon(proof.model)||!result.offers.every(o=>modelMatches(o,proof)))return false;
   }
   if(result.produceMarket!==undefined){
     const m=result.produceMarket;
     if(!m||result.pricingMode!=='produce_market'||result.offers.length||result.lowest||result.representative||typeof m.commodity!=='string'||!m.commodity.trim()||typeof m.region!=='string'||!m.region.trim()||m.currency!=='KRW'||!isFiniteNumber(m.quantity)||m.quantity<=0||!['kg','g','개','포기','단','송이','묶음','통','박스'].includes(m.unit)||!Array.isArray(m.samples)||!m.samples.length||m.samples.length>500)return false;
+    const commodity=commodityFor({kind:'product',marketKind:'produce',commodity:m.commodity});
+    if(!commodity)return false;
+    const canonical=raw=>{const u=new URL(raw);u.searchParams.sort();return u.href};
+    const expected=canonical(produceSource(commodity));
     if(m.samples.some(s=>{
       if(!s||s.quantity!==m.quantity||s.unit!==m.unit||s.currency!==m.currency||!(s.price>0)||!isFiniteNumber(s.price)||!s.title?.includes(m.commodity)||typeof s.source!=='string'||!s.source.startsWith('aT KAMIS · ')||!s.region || m.region!=='전국'&&s.region!==m.region)return true;
-      try{const u=new URL(s.url);if(u.origin!=='https://www.kamis.or.kr'||u.pathname!=='/customer/price/retail/item.do')return true;}catch{return true;}
+      try{const u=new URL(s.url);if(canonical(u.href)!==expected)return true;}catch{return true;}
       const age=Date.now()-Date.parse(s.observedAt+'T00:00:00+09:00'),checked=Date.now()-Date.parse(s.checkedAt);
       return !Number.isFinite(age)||age< -300000||age>8*86400000||!Number.isFinite(checked)||checked< -300000||checked>86400000;
     }))return false;

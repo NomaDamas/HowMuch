@@ -24,3 +24,16 @@ test('an unavailable or stale page cannot supply the headline price',()=>{
     assert.equal(isValidResearchResult({...result,offers:[bad],lowest:'o',highest:'o'}),false);
   }
 });
+
+test('headline evidence belongs to the selected model and the specific commodity table',()=>{
+  const candidate={name:'Jacket',category:'jacket',brand:'Acme',model:'J-204',confidence:.92};
+  const identity={brand:'Acme',model:'J-204',modelEvidence:['J-204'],brandEvidence:['Acme']};
+  const exact={...result,pricingMode:'exact_model',identity,candidates:[candidate],offers:[{...offer,title:'Acme J-204'}]};
+  assert.equal(isValidResearchResult(exact),true);
+  assert.equal(isValidResearchResult({...exact,candidates:[{...candidate,model:'J-205'}]}),false);
+  const sample={title:'사과 / 후지',source:'aT KAMIS · 경동',region:'서울',currency:'KRW',quantity:10,unit:'개',price:15400,url:'https://www.kamis.or.kr/customer/price/retail/item.do?action=priceinfo&productrankcode=1&itemcategorycode=400&itemcode=411&kindcode=05',checkedAt:new Date().toISOString(),observedAt:new Date(Date.now()-86400000).toISOString().slice(0,10)};
+  const m={commodity:'사과',region:'서울',currency:'KRW',quantity:10,unit:'개',min:15400,max:15400,median:15400,samples:[sample]};
+  const produce={...result,pricingMode:'produce_market',offers:[],lowest:undefined,highest:undefined,representative:undefined,produceMarket:m};
+  assert.equal(isValidResearchResult(produce),true);
+  assert.equal(isValidResearchResult({...produce,produceMarket:{...m,samples:[{...sample,url:sample.url.replace('411','212')}]}}),false);
+});
