@@ -8,7 +8,7 @@ const cases = JSON.parse(readFileSync(file, 'utf8'));
 const dataUrl = p => `data:image/${/\.png$/i.test(p) ? 'png' : 'jpeg'};base64,${readFileSync(p).toString('base64')}`;
 let hits = 0, answered = 0;
 const rows = [];
-for (const c of cases) {
+const work = async c => {
   const started = performance.now();
   let verdict = 'error', detail = '';
   try {
@@ -29,6 +29,8 @@ for (const c of cases) {
   rows.push({ name: c.name, verdict, seconds: ((performance.now() - started) / 1000).toFixed(1), detail });
   const done = rows.length, bar = '█'.repeat(Math.round(20 * done / cases.length)).padEnd(20, '░');
   console.log(`[${bar}] ${done}/${cases.length} ${verdict} ${rows.at(-1).seconds}s ${c.name.slice(0, 30)} · ${detail.slice(0, 70)}`);
-}
+};
+const limit = Number(process.env.EVAL_CONCURRENCY || 1), queue = [...cases];
+await Promise.all(Array.from({ length: Math.min(limit, cases.length) }, async () => { for (let c; (c = queue.shift());) await work(c); }));
 console.table(rows);
 console.log(`hit rate ${hits}/${cases.length} (${Math.round(100 * hits / Math.max(cases.length, 1))}%), answered ${answered}/${cases.length}`);

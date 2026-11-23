@@ -1,12 +1,12 @@
 import http from 'node:http';
 import { pathToFileURL } from 'node:url';
-import { chromium } from 'playwright';
+// Playwright is only needed by the legacy crawler pipeline: load it lazily so agent-only servers need no browser.
+const chromium={launch:async o=>(await import('playwright')).chromium.launch(o)};
 import { publicHost, merchantUrl, productObservations } from './merchant-prices.mjs';
 import { finalizeMarket } from './market.mjs';
 import { identityProof, inferredProof, needsModel, requestLabel, modelMatches } from './identity-market.mjs';
 import { commodityFor, readProduce } from './produce-market.mjs';
 import { renderedProduct } from './merchant-dom.mjs';
-import { cliResearch, cliKind } from './cli-agent.mjs';
 import { referenceScope,referenceRows } from './reference-kind.mjs';
 
 const imagePattern = /^data:image\/(png|jpeg|webp);base64,([\w+/=]+)$/i;
@@ -14,6 +14,15 @@ const discoveryHost = h => ['google.com','www.google.com','lens.google.com','len
 const unique = values => [...new Set(values)];
 const boundedStrings = (v,n,size) => Array.isArray(v) ? v.filter(x=>typeof x==='string' && x.trim()).slice(0,n).map(x=>x.trim().slice(0,size)) : [];
 async function modelJson(messages, signal) {
+  // One retry for transient proxy/network failures (5xx, 429, timeouts); a cancelled job is never retried.
+  try { return await modelJsonOnce(messages, signal); }
+  catch (e) {
+    if (signal?.aborted || !/^vlm_http_(5\d\d|429)$|TimeoutError|fetch failed|aborted/i.test(String(e?.message)+String(e?.name))) throw e;
+    await new Promise(r => setTimeout(r, 800));
+    return await modelJsonOnce(messages, signal);
+  }
+}
+async function modelJsonOnce(messages, signal) {
   const key=process.env.VLM_API_KEY || process.env.OPENAI_API_KEY;
   const base=process.env.VLM_BASE_URL || process.env.OPENAI_BASE_URL;
   const model=process.env.VLM_MODEL || process.env.OPENAI_VLM_MODEL;
@@ -28,8 +37,13 @@ async function modelJson(messages, signal) {
 
 // Intercept and validate every URL, including navigation redirects. Service workers and popup downloads are disabled.
 // Browser-internal redirects are avoided by fulfilling only validated, single-hop responses.
+import { existsSync } from 'node:fs';
+// Real Chrome (not the bundled headless Chromium) plus an optional signed-in session saved by `npm run login:browser`.
+// This is the user's own browser identity, the way desktop agent browsers work; it is not CAPTCHA solving or evasion.
+export const launchOptions=()=>({headless:true,...(process.env.HOWMUCH_BROWSER_CHANNEL?{channel:process.env.HOWMUCH_BROWSER_CHANNEL}:{})});
+const sessionFile=()=>process.env.HOWMUCH_BROWSER_STATE||'.howmuch/browser-state.json';
 async function guardedContext(browser, discovery) {
-  const ctx=await browser.newContext({serviceWorkers:'block',acceptDownloads:false,javaScriptEnabled:discovery,locale:'en-US'});
+  const ctx=await browser.newContext({...(discovery&&existsSync(sessionFile())?{storageState:sessionFile()}:{}),serviceWorkers:'block',acceptDownloads:false,javaScriptEnabled:discovery,locale:'en-US'});
   const redirectCount=new WeakMap();
   await ctx.routeWebSocket('**/*',ws=>ws.close());
   await ctx.route('**/*',async route=>{
@@ -115,12 +129,35 @@ export async function observePage(context,url,onReached=()=>{}){
     return rendered;
   } catch {return [];} finally {await p.close().catch(()=>{});}
 }
+// An agent-reported price counts only if the same number appears in the page's own text and the page title shares
+// the product's words. Unconfirmed claims are dropped; nothing the agent says is shown without page evidence.
+export async function confirmClaim(context,claim){
+  const url=merchantUrl(claim.url);
+  if(!url||claim.currency!=='KRW'&&claim.currency!=='USD'||!(claim.price>0))return null;
+  const p=await context.newPage();
+  try{
+    const resp=await p.goto(url,{waitUntil:'domcontentloaded',timeout:9500});
+    if(!resp?.ok()||!merchantUrl(p.url()))return null;
+    const [text,title]=await Promise.all([p.locator('body').innerText({timeout:3000}).catch(()=>''),p.title().catch(()=> '')]);
+    const hay=(title+' '+text).slice(0,400000),price=Math.round(claim.price);
+    const forms=[String(price),price.toLocaleString('en-US'),price.toLocaleString('ko-KR')];
+    if(claim.currency==='USD'){const d=claim.price.toFixed(2);forms.push(d,'$'+d)}
+    if(!forms.some(f=>hay.includes(f)))return null;
+    const words=(claim.title.toLowerCase().match(/[\p{L}\d]{2,}/gu)||[]),low=hay.toLowerCase();
+    if(!words.length||words.filter(w=>low.includes(w)).length/words.length<.5)return null;
+    const used=/중고|리퍼|refurb|\bused\b/i.test(title+' '+claim.title),soldOut=/품절|sold\s*out|out of stock/i.test(text.slice(0,20000));
+    const u=new URL(p.url());
+    return {title:claim.title.slice(0,240),url:p.url(),merchant:u.hostname,price,currency:claim.currency,condition:used?'used':'new',availability:soldOut?'out_of_stock':'in_stock',shipping:undefined,checkedAt:new Date().toISOString(),agentReported:true,
+      evidence:['Agent-reported price '+price+' '+claim.currency+' found verbatim in the page text','Quote: '+(claim.quote||'(none)'),'Condition inferred from page wording'],confidence:.7,model:'',sku:''};
+  }catch{return null}finally{await p.close().catch(()=>{})}
+}
 async function catalogPhoto(raw, signal) {
   // Only ordinary image bytes from curated merchant/CDN hosts; do not use merchant-provided redirects.
   try {
     const u=new URL(raw);
     const cdns=['cdn-shop.adafruit.com','m.media-amazon.com','i5.walmartimages.com','www.ikea.com','target.scene7.com'];
     if(u.protocol!=='https:' || u.username || u.password || u.port || !(merchantUrl(u.href)||cdns.includes(u.hostname)))return null;
+    if(!await publicHost(u.hostname))return null;
     const timeout=AbortSignal.timeout(3500);
     const r=await fetch(u,{redirect:'error',signal:signal?AbortSignal.any([signal,timeout]):timeout});
     const mime=(r.headers.get('content-type') || '').split(';')[0];
@@ -166,7 +203,7 @@ export async function research(body, deps={}){
     const side=async()=>{
       tools.push('visual_search','text_search');
       signal?.throwIfAborted();
-      const browser=await chromium.launch({headless:true});
+      const browser=await chromium.launch(launchOptions());
       const cancel=()=>{void browser.close().catch(()=>{});};
       signal?.addEventListener('abort',cancel,{once:true});
       try{
@@ -184,28 +221,26 @@ export async function research(body, deps={}){
     const market=retail.value;
     return finish({status:market?'complete':'no_result',pricingMode:'produce_market',offers:[],...(market && {produceMarket:market})});
   }
-  const browser=await (deps.launch||(()=>chromium.launch({headless:true})))();
+  const browser=await (deps.launch||(()=>chromium.launch(launchOptions())))();
   const cancel=()=>{void browser.close().catch(()=>{});};
   signal?.addEventListener('abort',cancel,{once:true});
-  const deadline=setTimeout(()=>{void browser.close().catch(()=>{});},Number(process.env.HOWMUCH_BROWSER_DEADLINE_MS||120000));
+  let deadline=setTimeout(()=>{void browser.close().catch(()=>{});},Number(process.env.HOWMUCH_BROWSER_DEADLINE_MS||165000));
   try {
     signal?.throwIfAborted();
     const [search,merchants]=await Promise.all([guardedContext(browser,true),guardedContext(browser,false)]);
     tools.push('visual_search','text_search');
-    const cliPromise=(deps.cliResearch||cliResearch)(plan,image,scene,{signal}).catch(()=>null);
     const compareQuery=proof?[proof.brandAliases?.[0]||proof.brand,proof.modelAliases?.[0]||proof.model].join(' '):candidates[0].name;
-    const merchantSearches=unique([...boundedStrings(plan.catalogUrls,2,1000),'https://search.danawa.com/dsearch.php?query='+encodeURIComponent(compareQuery)].map(merchantUrl).filter(Boolean));
+    const merchantSearches=unique([...boundedStrings(plan.catalogUrls,2,1000),'https://search.danawa.com/dsearch.php?query='+encodeURIComponent(compareQuery),'https://www.enuri.com/search.jsp?keyword='+encodeURIComponent(compareQuery)].map(merchantUrl).filter(Boolean));
     const branches=await Promise.all([
       discover(search,'https://www.google.com/imghp?hl=en',image),
       ...queries.map(q=>discover(search,'https://www.google.com/search?q='+encodeURIComponent(q+' buy price')+'&hl=en')),
       ...merchantSearches.map(url=>discover(merchants,url,undefined,candidates[0].name))
     ]);
     const routes=branches.map(b=>b.rows);
-    discovery.visual={status:branches[0].status,fileAttached:branches[0].attached,uploadAcknowledged:branches[0].acknowledged,merchantLinks:branches[0].rows.length};
+    discovery.visual=branches[0]?{status:branches[0].status,fileAttached:branches[0].attached,uploadAcknowledged:branches[0].acknowledged,merchantLinks:branches[0].rows.length}:{status:'skipped_agent_only'};
     discovery.catalogs=branches.slice(1+queries.length).map(b=>({status:b.status,merchantLinks:b.rows.length}));
     discovery.text=branches.slice(1,1+queries.length).map(b=>({status:b.status,merchantLinks:b.rows.length}));
-    const hint=await cliPromise;if(hint)tools.push('agent_deep_research');
-    const seeds=unique([...(hint?.productUrls||[]),...boundedStrings(plan.productUrls,3,1000)].map(merchantUrl).filter(Boolean)).slice(0,8);
+    const seeds=unique([...boundedStrings(plan.productUrls,3,1000)].map(merchantUrl).filter(Boolean)).slice(0,8);
     discovery.plannedMerchantPages=seeds.length;discovery.openedMerchantPages=0;discovery.offerObservations=0;
     // Price-comparison product pages (lowest price across sellers) go first; the model still verifies identity.
     const comparePages=unique(routes.flat().map(r=>{try{const u=new URL(r.url);return u.hostname==='prod.danawa.com'&&u.searchParams.get('pcode')?'https://prod.danawa.com/info/?pcode='+u.searchParams.get('pcode'):null}catch{return null}}).filter(Boolean)).slice(0,4);
@@ -253,10 +288,13 @@ export async function research(body, deps={}){
     return finish({...await finalizeMarket(verified,process.env.HOWMUCH_CURRENCY || 'KRW'),pricingMode:strict?'exact_model':'verified_offer',...(strict && {identity:proof})});
   } finally {clearTimeout(deadline);signal?.removeEventListener('abort',cancel);await browser.close().catch(()=>{});}
 }
+import { agentResearch } from './agent-research.mjs';
+// Default: agent-only research (parallel hosted web-search agents). HOWMUCH_RESEARCH=legacy keeps the old crawler pipeline.
+export const researchEntry=(body,deps)=>process.env.HOWMUCH_RESEARCH==='legacy'?research(body,deps):agentResearch(body,deps);
 if(process.argv[1] && import.meta.url===pathToFileURL(process.argv[1]).href){
   createAgentServer().listen(Number(process.env.AGENT_PORT||8791),'127.0.0.1',()=>console.log('HowMuch local research agent ready'));
 }
-export function createAgentServer(runResearch=research){
+export function createAgentServer(runResearch=researchEntry){
   const jobs={'/agent/research':0,'/agent/segment':0};
   return http.createServer(async(req,res)=>{
     const disconnect=new AbortController();

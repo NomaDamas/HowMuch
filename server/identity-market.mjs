@@ -1,6 +1,6 @@
 const clean=v=>typeof v==='string'?v.trim():'';
 const norm=v=>clean(v).normalize('NFKC').toLowerCase().replace(/[^\p{L}\d]/gu,'');
-const squash=v=>clean(v).normalize('NFKC').toLowerCase().replace(/[^\p{L}\d]+/gu,' ').trim();
+const squash=v=>clean(v).replace(/[™®©℠]/g,'').normalize('NFKC').toLowerCase().replace(/[^\p{L}\d]+/gu,' ').trim();
 function hasToken(text,value){
   const val=squash(value).split(' ').filter(Boolean);
   if(!val.length)return false;
@@ -21,11 +21,17 @@ export function identityProof(plan) {
     !brandEvidence.some(x=>hasToken(x,brand))||!modelEvidence.some(x=>hasToken(x,model)))return null;
   return {brand,model,brandEvidence,modelEvidence,modelAliases:aliasList(plan.modelAliases),brandAliases:aliasList(plan.brandAliases)};
 }
-const aliasList=v=>Array.isArray(v)?v.filter(x=>typeof x==='string'&&x.trim()).slice(0,4).map(x=>x.trim().slice(0,100)):[];
+const aliasList=v=>Array.isArray(v)?v.filter(x=>typeof x==='string'&&x.trim()).slice(0,12).map(x=>x.trim().slice(0,100)):[];
 export function modelMatches(offer,identity){
   if(!identity)return false;
-  const models=[identity.model,...aliasList(identity.modelAliases)],brands=[identity.brand,...aliasList(identity.brandAliases)];
-  return models.some(m=>hasToken([offer?.title,offer?.model,offer?.sku].join(' '),m))&&brands.some(b=>hasToken([offer?.title,offer?.brand].join(' '),b));
+  // Aliases vary between VLM runs ("에어포스 1 로우" vs "에어포스 1"), so also try each name without generic descriptors.
+  const generic=/(?:^|\s)(?:low|high|mid|model|version|edition|set|bundle|로우|하이|미드|모델|버전|세트)(?=\s|$)/giu;
+  const core=v=>squash(v).replace(generic,' ').replace(/\s+/g,' ').trim();
+  const withCore=list=>[...new Set(list.flatMap(v=>[v,core(v)]).filter(v=>v&&squash(v).length>=2))];
+  const models=withCore([identity.model,...aliasList(identity.modelAliases)]),brands=[identity.brand,...aliasList(identity.brandAliases)];
+  // Generic descriptors are dropped on BOTH sides ("OLED Model White" in a title vs "OLED White" in the agreed name).
+  const raw=[offer?.title,offer?.model,offer?.sku].join(' '),trimmed=core(raw);
+  return models.some(m=>hasToken(raw,m)||hasToken(trimmed,m))&&brands.some(b=>hasToken([offer?.title,offer?.brand].join(' '),b));
 }
 export const requestLabel=()=>({reason:'exact_model_not_visible',prompt:'제품 본체의 각인, 신발 안쪽 태그, 의류 라벨 등에서 브랜드와 모델번호가 함께 보이도록 가까이 비춰 주세요.'});
 
@@ -35,7 +41,10 @@ export const requestLabel=()=>({reason:'exact_model_not_visible',prompt:'제품 
 export function inferredProof(plan){
   const brand=clean(plan?.brand),model=clean(plan?.model),conf=Number(plan?.confidence);
   const bad=/^(unknown|generic|unbranded|nobrand|nonbrand|none|null|unspecified|알수없음|미상|무지|무브랜드|노브랜드|없음)$/i;
-  if(!brand||!model||!(conf>=.7)||bad.test(norm(brand))||bad.test(norm(model))||norm(brand)===norm(model)||norm(model).length<3||/^\d{1,3}$/.test(model))return null;
-  if(material.test([plan?.category,plan?.name].join(' '))||apparelAliases.test([plan?.category,plan?.name].join(' ')))return null; // apparel/eyewear still need a label
+  if(!brand||!model||!(conf>=.85)||bad.test(norm(brand))||bad.test(norm(model))||norm(brand)===norm(model)||norm(model).length<3||/^\d{1,3}$/.test(model))return null;
+  // Apparel/eyewear still need a label. Footwear words and 'low-top'/'high-top' must not be mistaken for "tops" (clothing).
+  const text=[plan?.category,plan?.name].join(' ').replace(/\b(low|mid|high)[\s-]?tops?\b/gi,' ');
+  const footwear=/sneakers?|shoes?|footwear|trainers?|loafers?|운동화|신발|스니커/i.test(text);
+  if(!footwear&&(material.test(text)||apparelAliases.test(text)))return null;
   return {brand,model,brandEvidence:['visual-search inferred: '+brand],modelEvidence:['visual-search inferred: '+model],inferred:true,modelAliases:aliasList(plan.modelAliases),brandAliases:aliasList(plan.brandAliases)};
 }

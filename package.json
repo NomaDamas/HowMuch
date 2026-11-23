@@ -19,7 +19,8 @@
     "smoke:pairing": "node scripts/pairing-browser.mjs",
     "smoke:world-anchor": "node scripts/world-anchor-browser.mjs",
     "postinstall": "node scripts/postinstall-star.mjs",
-    "eval:prices": "node scripts/eval-prices.mjs eval/cases.json"
+    "eval:prices": "node scripts/eval-prices.mjs eval/cases.json",
+    "login:browser": "node scripts/login-browser.mjs"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "latest",

@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { toScreen } from './lib/camera-scene.js';
-import { intrinsics, worldDirection, projectDirection, edgePoint, watchOrientation } from './lib/gyro-world.js';
+import { intrinsics, worldDirection, projectDirection, edgePoint, watchOrientation, uncertainty } from './lib/gyro-world.js';
 
 // Pokémon-GO-style persistence on any phone: while a target is visually tracked its centre is converted to a
 // world direction (refreshed every frame to cancel gyro drift). When tracking is lost or the user turns away,
@@ -23,7 +23,8 @@ export default function GhostLayer({ enabled, jobs, video, size, label }) {
         }
         if (!o.worldDir) continue;
         const p = projectDirection(R, o.worldDir, cam);
-        out.push({ o, p, inView: p.inView, edge: p.inView ? null : edgePoint(p), angle: p.edge });
+        const age = o.lostAt ? (performance.now() - o.lostAt) / 1000 : 0;
+        out.push({ o, p, age, inView: p.inView, edge: p.inView ? null : edgePoint(p), angle: p.edge });
       }
       setTags(prev => prev.length === 0 && out.length === 0 ? prev : out);
     };
@@ -32,8 +33,8 @@ export default function GhostLayer({ enabled, jobs, video, size, label }) {
   }, [enabled, size.width, size.height]);
   if (!enabled || !tags.length) return null;
   return <div className="ghost-layer" aria-label="시야 밖 물체">
-    {tags.map(({ o, p, inView, edge, angle }) => inView
-      ? <div key={o.id} className="ghost-tag" style={{ left: p.x * size.width, top: p.y * size.height }} data-object-id={o.id}><i className="ghost-ring" /><span>{label(o)}</span></div>
+    {tags.map(({ o, p, age, inView, edge, angle }) => inView
+      ? <div key={o.id} className="ghost-tag" style={{ left: p.x * size.width, top: p.y * size.height, opacity: uncertainty(age).opacity }} data-object-id={o.id}>{uncertainty(age).ring && <i className="ghost-ring" style={{ transform: `scale(${uncertainty(age).scale})` }} />}<span>{label(o)}{uncertainty(age).note && <small> · {uncertainty(age).note}</small>}</span></div>
       : <div key={o.id} className="ghost-arrow" style={{ left: edge.x * size.width, top: edge.y * size.height }} data-object-id={o.id}><b style={{ transform: `rotate(${-angle}rad)` }}>➤</b><span>{label(o)}</span></div>)}
   </div>;
 }

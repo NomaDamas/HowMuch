@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		19B60A5DF2602FBAC6F771C7 /* PriceHUD.swift in Sources */ = {isa = PBXBuildFile; fileRef = D00522348B2B70B36CDEDA53 /* PriceHUD.swift */; };
 		364FE7BF8722112D7FC535D1 /* ShellApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = F298BEC802BD83616880E5BB /* ShellApp.swift */; };
 		43E750E0A3DC34C4758F0851 /* TargetWorld.swift in Sources */ = {isa = PBXBuildFile; fileRef = DCBFC0B7266066077FBFCAB4 /* TargetWorld.swift */; };
 		6CC4C0D1471DC7441B278C80 /* App.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D748A6E2FA8E353CE317B88 /* App.swift */; };
@@ -19,6 +20,7 @@
 		588FC95D4126E15268309AB2 /* TargetSignature.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TargetSignature.swift; sourceTree = "<group>"; };
 		6D748A6E2FA8E353CE317B88 /* App.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = App.swift; sourceTree = "<group>"; };
 		A0291F57A4F49666FE540DCC /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		D00522348B2B70B36CDEDA53 /* PriceHUD.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PriceHUD.swift; sourceTree = "<group>"; };
 		DCBFC0B7266066077FBFCAB4 /* TargetWorld.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TargetWorld.swift; sourceTree = "<group>"; };
 		F298BEC802BD83616880E5BB /* ShellApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShellApp.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -46,6 +48,7 @@
 			isa = PBXGroup;
 			children = (
 				6D748A6E2FA8E353CE317B88 /* App.swift */,
+				D00522348B2B70B36CDEDA53 /* PriceHUD.swift */,
 				588FC95D4126E15268309AB2 /* TargetSignature.swift */,
 				DCBFC0B7266066077FBFCAB4 /* TargetWorld.swift */,
 			);
@@ -135,6 +138,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				6CC4C0D1471DC7441B278C80 /* App.swift in Sources */,
+				19B60A5DF2602FBAC6F771C7 /* PriceHUD.swift in Sources */,
 				7690597D82589DBBE64FC854 /* TargetSignature.swift in Sources */,
 				43E750E0A3DC34C4758F0851 /* TargetWorld.swift in Sources */,
 			);

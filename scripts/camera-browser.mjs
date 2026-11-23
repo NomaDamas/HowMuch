@@ -18,6 +18,8 @@ await page.route('**/api/research',async route=>{const n=researchRequests.length
  await route.fulfill({json:{candidates:[{name:'Kettle',confidence:.9}],offers:[a],lowest:a,startedAt:t,completedAt:t,tools:['fixture'],status:'complete'}}).catch(()=>{})});
 await page.goto(server.resolvedUrls.local[0]);await page.waitForFunction(()=>document.querySelector('video')?.readyState>=2);sampleCutout=await page.evaluate(()=>{const c=document.createElement('canvas');c.width=24;c.height=24;const ctx=c.getContext('2d');ctx.fillRect(5,5,12,12);return c.toDataURL()});await page.waitForTimeout(1600);assert.equal(segmentRequests.length,0);
 await page.waitForFunction(()=>document.querySelectorAll('.card').length===2,{},{timeout:15000});await page.locator('.card[data-phase="complete"]').waitFor();assert.equal(await page.locator('.card[data-phase="identifying"]').count(),1);
+{const small=await page.evaluate(()=>[...document.querySelectorAll('.header-actions button,.camera nav button,.job-chip,.card-dismiss')].filter(e=>e.offsetParent).map(e=>{const r=e.getBoundingClientRect();return {c:e.className||e.tagName,w:Math.round(r.width),h:Math.round(r.height)}}).filter(r=>Math.min(r.w,r.h)<44));assert.deepEqual(small,[],'touch targets under 44px: '+JSON.stringify(small));
+ if(process.env.HOWMUCH_SHOTS)await page.screenshot({path:process.env.HOWMUCH_SHOTS+'/two-cards.png'});}
 assert(researchRequests.length>=2);assert.equal(researchRequests[0].cutoutDataUrl,sampleCutout);assert(researchRequests[0].imageDataUrl.startsWith('data:image/jpeg;'));assert.equal(researchRequests[0].selection.x,.2);const original=await page.locator('.contours path').first().getAttribute('d');assert.equal(original.split('Z').length,3);await page.waitForTimeout(600);assert.equal(await page.locator('.contours path').first().getAttribute('d'),original);
 await page.evaluate(()=>window.setLost(true));await page.waitForFunction(()=>document.querySelectorAll('.card').length===0);pending.shift()();await page.waitForTimeout(1700);assert(segmentRequests.some(p=>p.propagation?.previousImageDataUrl),'auto SAM refresh after losing lock');assert.equal(await page.locator('.card').count(),0);
 await page.evaluate(()=>window.setLost(false));await page.waitForFunction(()=>document.querySelectorAll('.card').length===2);
@@ -26,7 +28,7 @@ await page.locator('.card').first().click();await page.getByRole('dialog',{name:
 const mode=m=>page.getByRole('button',{name:m,exact:true}).click(), list=page.getByRole('dialog',{name:'조사 목록'}), closeList=()=>list.getByRole('button',{name:'카메라로 돌아가기'}).click();
 const openList=()=>page.getByRole('button',{name:/^조사 목록/}).click();
 const cancelInList=async id=>{await openList();await list.getByRole('button',{name:'목록에서 물체 '+id+' 조사 취소',exact:true}).click();await closeList()};
-const tap=()=>page.mouse.click(38,425); const waitN=(n)=>page.waitForFunction(n=>document.querySelectorAll('.card').length===n,n);
+const tap=()=>page.mouse.click(300,300); const waitN=(n)=>page.waitForFunction(n=>document.querySelectorAll('.card').length===n,n);
 await mode('터치·그리기');await waitN(2); // finished automatic jobs survive mode transitions
 const invalidBefore=segmentRequests.length;
 await page.evaluate(()=>{document.querySelector('video').srcObject.getVideoTracks()[0].enabled=false;});
@@ -36,7 +38,7 @@ await page.evaluate(()=>{const v=document.querySelector('video');Object.definePr
 const zeroManual=segmentRequests.filter(p=>p.point||p.selection).length;await waitN(0);await tap();await page.waitForTimeout(200);assert.equal(segmentRequests.filter(p=>p.point||p.selection).length,zeroManual,'zero-dimension camera does not submit manual selection');
 await page.evaluate(()=>{delete document.querySelector('video').videoHeight;});await waitN(2);
 const autoIds=await page.locator('.card').evaluateAll(ns=>ns.map(n=>n.dataset.objectId));
-holdManual=true;await tap();await page.waitForTimeout(120);assert(releaseManual,'manual segmentation pending');
+if(process.env.HOWMUCH_SHOTS)await page.screenshot({path:process.env.HOWMUCH_SHOTS+'/before-tap.png'});holdManual=true;await tap();await page.waitForTimeout(120);assert(releaseManual,'manual segmentation pending');
 await mode('자동');const idBefore=new Set(autoIds);releaseManual();await waitN(3);
 const manualId=(await page.locator('.card').evaluateAll(ns=>ns.map(n=>n.dataset.objectId))).find(id=>!idBefore.has(id));
 assert(manualId,'pending manual subject finishes after mode change');

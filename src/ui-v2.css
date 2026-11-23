@@ -7,7 +7,7 @@
 .camera header>b{font-size:17px;letter-spacing:-.5px}
 .camera header>b small{display:none}
 .header-actions{display:flex;gap:6px;align-items:center}
-.header-actions button{padding:8px 10px;border-radius:999px;background:var(--hm-glass);font-size:12px;white-space:nowrap}
+.header-actions button{min-height:44px;min-width:44px;padding:8px 12px;border-radius:999px;background:var(--hm-glass);font-size:12px;white-space:nowrap}
 .header-actions .gyro-btn.on{background:var(--hm-accent);color:var(--hm-ink);border-color:transparent;font-weight:700}
 .hint{top:max(64px,calc(env(safe-area-inset-top) + 50px));left:50%;transform:translateX(-50%);max-width:calc(100% - 32px);background:var(--hm-glass);backdrop-filter:blur(10px);border:1px solid var(--hm-line);border-radius:999px;padding:7px 14px;white-space:nowrap}
 
@@ -33,7 +33,7 @@
 .card>b{font-size:23px;letter-spacing:-.7px;color:#fff;text-shadow:0 0 18px rgba(200,255,90,.35)}
 .card[data-phase="loading"],.card[data-phase="identifying"],.card[data-phase="segmenting"]{border-color:rgba(200,255,90,.55)}
 @keyframes card-float{50%{translate:0 -3px}}
-.card-dismiss{width:22px;height:22px;padding:0;border-radius:50%;border:1px solid var(--hm-line);background:rgba(0,0,0,.55);color:#fff;font-size:11px;line-height:1;z-index:5}
+.card-dismiss{width:44px;height:44px;margin:-11px;padding:0;border:0;border-radius:50%;background:radial-gradient(circle,rgba(0,0,0,.62) 0 11px,transparent 12px);color:#fff;font-size:11px;line-height:1;z-index:5}
 
 /* ghost anchors (turn-away persistence) */
 .ghost-layer{position:absolute;inset:0;z-index:4;pointer-events:none;overflow:hidden}
@@ -48,14 +48,19 @@
 /* tray: single horizontal chip row above the mode switch */
 .job-tray{left:0;right:0;bottom:max(96px,calc(env(safe-area-inset-bottom) + 80px));padding:0 12px;border:0;background:transparent;box-shadow:none;backdrop-filter:none}
 .job-tray-head{display:none}
-.job-chip{display:flex;align-items:center;gap:7px;flex:none;border:1px solid var(--hm-line);background:var(--hm-glass);backdrop-filter:blur(12px);border-radius:999px;padding:7px 10px;font-size:12px}
+.job-chip{min-height:44px;display:flex;align-items:center;gap:7px;flex:none;border:1px solid var(--hm-line);background:var(--hm-glass);backdrop-filter:blur(12px);border-radius:999px;padding:7px 10px;font-size:12px}
 .job-chip-state{color:var(--hm-accent)}
 .job-dot{width:8px;height:8px;border-radius:50%;background:var(--hm-accent);box-shadow:0 0 8px var(--hm-accent)}
 .job-dot.muted{background:#8a9a90;box-shadow:none}
 
 /* mode switch */
 .camera nav{bottom:max(28px,calc(env(safe-area-inset-bottom) + 18px));padding:5px;background:var(--hm-glass);backdrop-filter:blur(18px)}
-.camera nav button{display:flex;align-items:center;gap:6px;border:0;border-radius:999px;padding:11px 18px;background:transparent;font-weight:600}
+.camera nav button{min-height:44px;display:flex;align-items:center;gap:6px;border:0;border-radius:999px;padding:11px 18px;background:transparent;font-weight:600}
 .camera nav button.on{background:var(--hm-accent);color:var(--hm-ink)}
 .camera aside{opacity:.55;font-size:10px}
 @media (prefers-reduced-motion:reduce){.card>*,.contours path,.reticle,.ghost-ring,.ghost-arrow b{animation:none}}
+
+.job-chip-x{display:grid;place-items:center;width:36px;height:36px;margin:-6px -8px -6px 0;border-radius:50%}
+.ghost-tag small{opacity:.8;font-size:10px}
+.ghost-ring{transition:transform .6s,opacity .6s}
+.brand-sep{display:none}
