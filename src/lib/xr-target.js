@@ -93,5 +93,7 @@ export async function captureMaskedSignature(png,s,aspect){
  const ctx=c.getContext('2d');ctx.drawImage(img,0,0);
  const mask={x:0,y:0,width:1,height:1,polygon:[{x:0,y:0},{x:1,y:0},{x:1,y:1},{x:0,y:1}]};
  const t=templateFrom(ctx.getImageData(0,0,c.width,c.height),mask,true);
- return t&&{...t,height:s.height,aspect};
+ if(!t)return null;
+ const rings=(s.contours?.length?s.contours:[s.polygon]).map(r=>r.map(p=>({x:Math.max(0,Math.min(1,(p.x-s.x)/s.width)),y:Math.max(0,Math.min(1,(p.y-s.y)/s.height))})));
+ return {...t,height:s.height,aspect,outline:rings};
 }

@@ -5,7 +5,7 @@ export function summarizeCard(result) {
   if(reference){const price=amount(reference.price,reference.currency),basis=reference.quantity+reference.unit+' 구성 · 배송비 제외';return {price,basis:'유사 상품 · '+basis,type:'동일 상품 아님',label:'유사 상품 참고 '+price+' / '+reference.quantity+reference.unit};}
   const p = result?.produceMarket;
   if (p?.samples?.length && p.quantity>0 && p.unit) return {
-    price:amount(p.median,p.currency), basis:p.region+' · '+p.quantity+p.unit+' 기준', type:'농산물 참고 시세',
+    price:amount(p.median,p.currency), basis:p.region+' · '+p.quantity+p.unit+' 기준'+(p.cut?' · '+p.cut:'')+(p.grade&&p.grade!=='unknown'?' · '+p.grade:''), type:p.cut?'축수산물 참고 시세':'농산물 참고 시세',
     label:amount(p.median,p.currency)+' / '+p.quantity+p.unit+' · '+p.region+' 참고가'
   };
   if(result?.status==='followup_required') return {price:'품번을 비춰 주세요',basis:'모델 식별 필요',type:'가격 보류'};

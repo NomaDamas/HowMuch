@@ -47,13 +47,14 @@ export function isValidResearchResult(result) {
   }
   if(result.produceMarket!==undefined){
     const m=result.produceMarket;
-    if(!m||result.pricingMode!=='produce_market'||result.offers.length||result.lowest||result.representative||typeof m.commodity!=='string'||!m.commodity.trim()||typeof m.region!=='string'||!m.region.trim()||m.currency!=='KRW'||!isFiniteNumber(m.quantity)||m.quantity<=0||!['kg','g','개','포기','단','송이','묶음','통','박스'].includes(m.unit)||!Array.isArray(m.samples)||!m.samples.length||m.samples.length>500)return false;
+    const commodityMode=!!m&&commodityFor({kind:'product',marketKind:'commodity',commodity:m.commodity})?.[5]==='commodity';
+    if(!m||result.pricingMode!=='produce_market'||result.offers.length||result.lowest||result.representative||typeof m.commodity!=='string'||!m.commodity.trim()||!m.region||m.currency!=='KRW'||!isFiniteNumber(m.quantity)||m.quantity<=0||!['kg','g','개','포기','단','송이','묶음','통','박스','마리','근','판','팩'].includes(m.unit)||!Array.isArray(m.samples)||!m.samples.length||m.samples.length>500||commodityMode&&(!m.cut||typeof m.cut!=='string'||!m.grade||typeof m.grade!=='string'))return false;
     const commodity=commodityFor({kind:'product',marketKind:'produce',commodity:m.commodity});
     if(!commodity)return false;
     const canonical=raw=>{const u=new URL(raw);u.searchParams.sort();return u.href};
     const expected=canonical(produceSource(commodity));
     if(m.samples.some(s=>{
-      if(!s||s.quantity!==m.quantity||s.unit!==m.unit||s.currency!==m.currency||!(s.price>0)||!isFiniteNumber(s.price)||!s.title?.includes(m.commodity)||typeof s.source!=='string'||!s.source.startsWith('aT KAMIS · ')||!s.region || m.region!=='전국'&&s.region!==m.region)return true;
+      if(!s||s.quantity!==m.quantity||s.unit!==m.unit||s.currency!==m.currency||!(s.price>0)||!isFiniteNumber(s.price)||!s.title?.includes(m.commodity)||typeof s.source!=='string'||!s.source.startsWith('aT KAMIS · ')||!s.region || m.region!=='전국'&&s.region!==m.region||commodityMode&&(s.cut!==m.cut||s.grade!==m.grade||s.observedAt===undefined))return true;
       try{const u=new URL(s.url);if(canonical(u.href)!==expected)return true;}catch{return true;}
       const age=Date.now()-Date.parse(s.observedAt+'T00:00:00+09:00'),checked=Date.now()-Date.parse(s.checkedAt);
       return !Number.isFinite(age)||age< -300000||age>8*86400000||!Number.isFinite(checked)||checked< -300000||checked>86400000;
