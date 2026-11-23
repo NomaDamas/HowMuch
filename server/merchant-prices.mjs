@@ -1,13 +1,17 @@
 // Curated public storefronts only. Search/navigation suggestions never grant network access.
-const merchants = ['apple.com','adafruit.com','lego.com','amazon.com','amazon.co.jp','coupang.com','nike.com','store.google.com','samsung.com','danawa.com','smartstore.naver.com','brand.naver.com','shopping.naver.com','ikea.com','uniqlo.com','emart.ssg.com','ssg.com','walmart.com','target.com','bestbuy.com','sparkfun.com','mouser.com','digikey.com','rei.com','nintendo.com','logitech.com','bhphotovideo.com','yes24.com','aladin.co.kr','kyobobook.co.kr','oliveyoung.co.kr','kurly.com','musinsa.com','11st.co.kr','gmarket.co.kr','auction.co.kr','adidas.com','newbalance.com'];
+export const curatedMerchants = ['apple.com','adafruit.com','lego.com','amazon.com','amazon.co.jp','coupang.com','nike.com','store.google.com','samsung.com','danawa.com','smartstore.naver.com','brand.naver.com','shopping.naver.com','ikea.com','uniqlo.com','emart.ssg.com','ssg.com','walmart.com','target.com','bestbuy.com','sparkfun.com','mouser.com','digikey.com','rei.com','nintendo.com','logitech.com','bhphotovideo.com','yes24.com','aladin.co.kr','kyobobook.co.kr','oliveyoung.co.kr','kurly.com','musinsa.com','11st.co.kr','gmarket.co.kr','auction.co.kr','adidas.com','newbalance.com'];
+// Any public https storefront is readable (so produce/apparel/anything works); curated merchants only rank first.
+const privateHost = h => !h.includes('.') || /^\d+(\.\d+){3}$/.test(h) || h.includes(':') || /\.(local|localhost|internal|lan|home|test|example|invalid|corp|intranet)$/.test(h) || h.startsWith('[');
 export function merchantUrl(raw) {
   try {
     const u = new URL(raw);
-    if (u.protocol !== 'https:' || u.username || u.password || u.port || !merchants.some(h => h===u.hostname || u.hostname.endsWith('.'+h))) return null;
+    if (u.protocol !== 'https:' || u.username || u.password || u.port || privateHost(u.hostname.toLowerCase())) return null;
+    if (u.hostname!=='store.google.com' && /(^|\.)(google|bing|duckduckgo|facebook|instagram|youtube|tiktok|twitter|x)\.[a-z.]+$/i.test(u.hostname)) return null;
     if (u.pathname === '/' || /\/(cart|checkout|order|login|account|logout|add-to-cart|purchase|pay)(\/|$)/i.test(u.pathname)) return null;
     u.hash=''; return u.href;
   } catch { return null; }
 }
+export const isCurated = url => { try { const h = new URL(url).hostname; return curatedMerchants.some(m => h === m || h.endsWith('.' + m)); } catch { return false; } };
 const tag = value => String(value || '').split('/').pop().toLowerCase();
 const number = value => (typeof value==='number' || (typeof value==='string' && /^\d+(?:\.\d+)?$/.test(value))) && Number.isFinite(Number(value)) ? Number(value) : null;
 const array = value => Array.isArray(value) ? value : value ? [value] : [];
@@ -52,4 +56,11 @@ export function compareObservations(rows, preferred='KRW') {
   cohort.sort((a,b)=>total(a)-total(b));
   const mid=cohort.length/2;
   return {offers,lowest:cohort[0].id,highest:cohort.at(-1).id,representative:{min:total(cohort[0]),max:total(cohort.at(-1)),median:cohort.length%2?total(cohort[Math.floor(mid)]):(total(cohort[mid-1])+total(cohort[mid]))/2,currency:first.currency,condition:first.condition,basis:delivered?'delivered':'item_only',sampleCount:cohort.length}};
+}
+
+// Resolve the hostname and refuse private, loopback, link-local and other non-public addresses (DNS-rebinding guard).
+import { lookup } from 'node:dns/promises';
+export const privateAddress = a => /^(0\.|10\.|127\.|169\.254\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.|192\.0\.0\.|198\.1[89]\.|2(2[4-9]|[3-5]\d)\.)/.test(a) || /^(::1?$|f[cd]|fe[89ab]|::ffff:)/i.test(a);
+export async function publicHost(hostname, resolve = lookup) {
+  try { const rows = await resolve(hostname, { all: true }); return rows.length > 0 && rows.every(r => !privateAddress(r.address)); } catch { return false; }
 }

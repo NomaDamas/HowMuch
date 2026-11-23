@@ -8,3 +8,4 @@ dist/
 # Local model weights, isolated environment, and demo certificates
 .howmuch/
 __pycache__/
+.howmuch-star-asked
