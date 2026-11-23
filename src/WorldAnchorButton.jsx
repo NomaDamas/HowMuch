@@ -26,7 +26,7 @@ export default function WorldAnchorButton({title,price,target,objects,compact=fa
    const ref=await session.requestReferenceSpace('local');if(disposed)return;
    let binding;if(auto){binding=new XRWebGLBinding(session,gl);reader=cameraReader(gl)}
    else{const viewer=await session.requestReferenceSpace('viewer');source=await session.requestHitTestSource({space:viewer});if(disposed){source.cancel();return}}
-   if(auto)cards=createXrCards(gl,ref);else renderer=worldRenderer(gl,title,price);
+   if(auto)cards=createXrCards(gl,ref);else renderer=worldRenderer(gl,title,price,target?.outline);
    let lock=null,offset=null,selected=false,pending=false,lastStatus='';
    const status=s=>{if(lastStatus!==s){lastStatus=s;announce(s)}};
    function reset(){cards?.reset();revision++;selected=false;pending=false;anchor?.delete();anchor=null;lock=null;offset=null}

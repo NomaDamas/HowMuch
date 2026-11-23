@@ -42,6 +42,14 @@ The same versioned contracts are exposed through REST/OpenAPI, MCP, SSE/WebSocke
 
 The selected object is visibly cut out and tracked; the card is beside it and disappears/reappears with visibility; automatic and touch/draw modes work; every displayed lowest price has timestamped evidence; provider failures and no-result states are explicit; tests cover schemas, normalization, transforms, lifecycle, and privacy defaults; provider adapters and lifecycle helpers are unit-tested before native expansion; isolated GPT-6.2 Astra High review returns `PASS` before merge.
 
+## Product identity and commodity behavior
+
+HowMuch removes the manual search step for the user. A visible logo, label or barcode is useful evidence, but it is not a mandatory interaction: the VLM and visual-search agent may identify an exact model from the cutout and surrounding scene when the evidence is strong enough. If the evidence supports only “glasses”, “jacket” or another broad class, the product deliberately asks for a close-up of the label/model and shows that reason in the HUD instead of presenting a misleading exact price. This is the convenience boundary: the user points first and only supplies a label when the agent cannot establish the model.
+
+Unpackaged fruit, vegetables, meat, fish and eggs use commodity logic rather than SKU logic. The VLM proposes only the visible commodity, cut/species, grade, region and unit. The agent searches current market pages and returns a reference quote with quantity/unit, region, observed date and source. Missing grade, weight or region produces a clearly qualified reference or `no_result`; it never becomes a fabricated per-item price. The HUD labels these as `시장 참고가` and the detail sheet explains the unit before the user compares an on-site purchase.
+
+The camera always keeps a compact investigation tray on screen. Each job remains visible after the object leaves the frame and reports `누끼 찾는 중`, `물체 확인 중`, `시세 조사 중`, `품번 필요`, `누끼 재획득 중` or the evidence-backed price. A separate `×` cancels only that job. In supported WebXR, the same target outline and price billboard are drawn from one world anchor; a short loss of visual evidence keeps the dashed world cutout outline while hiding the price billboard, preserving the anchor so a later match restores the full HUD in the same 3D position.
+
 ## Approved refinement: tracking and evidence
 
 > 그리고 Ocr같은건 어차피 Vlm 선에서 모두 정리되니깐 Vlm이 Generalize되어서 더 잘할것들은 하지말고.

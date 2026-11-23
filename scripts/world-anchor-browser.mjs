@@ -99,8 +99,8 @@ try{
  const newX=await page.evaluate(()=>window.xrTest.state.cardScreenX);assert.ok(Math.abs(newX-originalX)<.002,'billboard should remain beside the silhouette in the current eye');
  await step(2,{orbit:false});
  const moved=await step(5,{objectX:46});assert.ok(moved.a.length>initial.a.length && moved.a.at(-1).x>initial.a[0].x+.05,'moving object should move the anchor in meters');
- const away=await step(4,{away:true});assert.equal(away.d,moved.d,'no billboard on turned-away view');
- const back=await step(4,{away:false});assert.ok(back.d>away.d,'same object visible again');
+ const away=await step(4,{away:true});assert.equal(away.d,moved.d+4,'turned-away view keeps only the world cutout outline, not the price billboard');
+ const back=await step(4,{away:false});assert.ok(back.d>away.d,'same object visible again with price billboard restored');
  await page.evaluate(()=>window.xrTest.reset());const reset=await step(3,{depth:NaN});assert.equal(reset.d,back.d,'reset plus absent depth must hide');
  const relock=await step(4,{depth:1.1});assert.equal(relock.a.at(-1)?.z,-1.1);
  await page.getByRole('button',{name:'AR 닫기'}).click();assert.deepEqual(await page.evaluate(()=>{const s=window.xrTest.state;return [s.starts,s.stops,s.autoDeletes,s.autoAnchors.length]}),[2,2,relock.a.length,relock.a.length]);
@@ -110,10 +110,10 @@ try{
  const before=await page.evaluate(()=>{const s=window.xrTest.state;return {reads:s.cameraReads,depth:s.depthReads,d:s.cardDraws,a:s.autoAnchors.length}});
  const multi=await step(4,{objectX:36,away:false,depth:.8});
  assert.equal(multi.reads-before.reads,4);assert.equal(await page.evaluate(()=>window.xrTest.state.depthReads)-before.depth,4);assert.equal(multi.a.length-before.a,2);
- assert.equal(multi.d-before.d,6,'two cards rendered after two consistent frames');
+ assert.equal(multi.d-before.d,12,'each card renders a world cutout outline and price billboard after two consistent frames');
  await page.evaluate(()=>window.multi('₩3,200'));await page.waitForTimeout(50);
  const updated=await step(1,{});assert.equal(updated.a.length,multi.a.length);assert.ok(await page.evaluate(()=>window.xrTest.state.labels.includes('₩3,200')));
  await page.evaluate(()=>window.multi('₩3,200',false));await page.waitForTimeout(50);
- const removed=await step(1,{});assert.equal(removed.deleted,updated.deleted+1);assert.equal(removed.d,updated.d+1);
+ const removed=await step(1,{});assert.equal(removed.deleted,updated.deleted+1);assert.equal(removed.d,updated.d+2);
  await page.getByRole('button',{name:'AR 닫기'}).click();assert.deepEqual(errors,[]);console.log('PASS: one XR session, shared camera/depth samples, two independent cards, live price texture update and removed job cleanup.');
 } finally {await browser?.close();await server.close()}

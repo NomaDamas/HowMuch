@@ -18,6 +18,8 @@ npm run demo
 
 Open **http://localhost:5173**. The launcher starts the loopback research API (:8787), browser agent (:8791), and Vite. Press Ctrl+C to stop. For separate processes run `npm run demo:agent`, `npm run demo:api`, and `npm run dev`. `RESEARCH_TIMEOUT_MS` defaults to 180000; API accepts 1–600 seconds. No public tunnel is used.
 
+HowMuch never stars repositories silently during `git clone` or installation. GitHub authentication is not collected by this project. If you want to support the project, use the in-app **GitHub에서 HowMuch Star 누르기** link or run `gh repo star NomaDamas/HowMuch` yourself after signing in.
+
 ## Phone on the same Wi-Fi
 
 1. Stop the desktop launcher. Run `npm run demo:phone` (requires OpenSSL with `-addext`; set `HOWMUCH_LAN_IP` if your machine has multiple adapters). It builds the frontend, generates a private local CA and a seven-day server certificate under ignored `.howmuch/tls`, and serves **only the built app** over HTTPS on the Wi-Fi address, port 8443. The desktop developer server and agent remain loopback-only.
