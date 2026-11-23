@@ -42,6 +42,7 @@ export function isValidResearchResult(result) {
   if(result.offers.length&&(result.pricingMode==='exact_model'||needsModel(result.candidates[0]))){
     const i=result.identity || {};
     const proof=identityProof({...i,visibleModelEvidence:i.modelEvidence});
+    if(i.inferred&&!result.offers.some(o=>o.aggregate)&&new Set(result.offers.map(o=>{try{return new URL(o.url).hostname.replace(/^www\./,'')}catch{return o.url}})).size<2)return false;
     const selected=result.candidates[0], canon=v=>typeof v==='string'?v.trim().normalize('NFKC').toLowerCase():'';
     if(!proof||!selected||canon(selected.brand)!==canon(proof.brand)||canon(selected.model)!==canon(proof.model)||!result.offers.every(o=>modelMatches(o,proof)))return false;
   }

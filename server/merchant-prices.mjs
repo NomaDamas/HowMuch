@@ -7,7 +7,7 @@ export function merchantUrl(raw) {
     const u = new URL(raw);
     if (u.protocol !== 'https:' || u.username || u.password || u.port || privateHost(u.hostname.toLowerCase())) return null;
     if (u.hostname!=='store.google.com' && /(^|\.)(google|bing|duckduckgo|facebook|instagram|youtube|tiktok|twitter|x)\.[a-z.]+$/i.test(u.hostname)) return null;
-    if (u.pathname === '/' || /\/(cart|checkout|order|login|account|logout|add-to-cart|purchase|pay)(\/|$)/i.test(u.pathname)) return null;
+    if ((u.pathname === '/' && !u.search) || /\/(cart|checkout|order|login|account|logout|add-to-cart|purchase|pay)(\/|$)/i.test(u.pathname)) return null;
     u.hash=''; return u.href;
   } catch { return null; }
 }
@@ -15,6 +15,7 @@ export const isCurated = url => { try { const h = new URL(url).hostname; return 
 const tag = value => String(value || '').split('/').pop().toLowerCase();
 const number = value => (typeof value==='number' || (typeof value==='string' && /^\d+(?:\.\d+)?$/.test(value))) && Number.isFinite(Number(value)) ? Number(value) : null;
 const array = value => Array.isArray(value) ? value : value ? [value] : [];
+const comparisonSites = ['danawa.com', 'enuri.com'];
 export function productObservations(docs, pageUrl, checkedAt = new Date().toISOString()) {
   if (!merchantUrl(pageUrl)) return [];
   const observations=[];
@@ -24,7 +25,15 @@ export function productObservations(docs, pageUrl, checkedAt = new Date().toISOS
     if (Array.isArray(node['@graph'])) inspect(node['@graph']);
     if (!array(node['@type']).includes('Product') || typeof node.name!=='string' || !node.name.trim()) return;
     for (const offer of array(node.offers)) {
-      if (!array(offer?.['@type']).includes('Offer')) continue; // AggregateOffer lowPrice is not a purchasable offer.
+      if (array(offer?.['@type']).includes('AggregateOffer')) {
+        // Only price-comparison sites: their lowPrice is the lowest listed price across independent sellers.
+        const host = new URL(pageUrl).hostname, low = number(offer.lowPrice), count = Number(offer.offerCount);
+        if (!comparisonSites.some(h => host === h || host.endsWith('.' + h)) || !(low > 0) || !(count >= 2) || offer.priceCurrency !== 'KRW' || !Number.isInteger(low)) continue;
+        observations.push({title:node.name.slice(0,240),url:pageUrl,merchant:host,price:low,currency:'KRW',condition:'new',availability:'in_stock',shipping:undefined,checkedAt,aggregate:true,sellerCount:count,
+          evidence:[`Product: ${node.name}`,`AggregateOffer.lowPrice: ${low} KRW across ${count} sellers on a price-comparison site`,'Condition assumed new (comparison-site retail listing); shipping not confirmed'],confidence:.8,model:String(node.model || node.mpn || '').slice(0,100),sku:String(node.sku || '').slice(0,100),photo:(typeof array(node.image)[0]==='string'?array(node.image)[0]:undefined)});
+        continue;
+      }
+      if (!array(offer?.['@type']).includes('Offer')) continue;
       const price=number(offer.price), currency=offer.priceCurrency;
       if (offer.priceValidUntil && /^\d{4}-\d{2}-\d{2}/.test(String(offer.priceValidUntil)) && Date.parse(String(offer.priceValidUntil)) < Date.now()) continue;
       if (offer.validThrough && /^\d{4}-\d{2}-\d{2}/.test(String(offer.validThrough)) && Date.parse(String(offer.validThrough)) < Date.now()) continue;

@@ -1,0 +1,215 @@
+[
+  {
+    "name": "APPLE 에어팟 프로2 맥세이프 USB-C MTJV3KH/A (정품)",
+    "query": "에어팟 프로 2",
+    "source": "https://prod.danawa.com/info/?pcode=28208783",
+    "image": "eval/images/1.jpg",
+    "observedLowPrice": 338890,
+    "expect": {
+      "modelAny": [
+        "airpods",
+        "에어팟"
+      ],
+      "minPrice": 203334,
+      "maxPrice": 542224
+    }
+  },
+  {
+    "name": "삼성전자 갤럭시 버즈3 프로 SM-R630N (정품)",
+    "query": "갤럭시 버즈3 프로",
+    "source": "https://prod.danawa.com/info/?pcode=59537216",
+    "image": "eval/images/2.jpg",
+    "observedLowPrice": 214000,
+    "expect": {
+      "modelAny": [
+        "buds",
+        "버즈"
+      ],
+      "minPrice": 128400,
+      "maxPrice": 342400
+    }
+  },
+  {
+    "name": "로지텍 MX Master 3S (정품) (블랙)",
+    "query": "로지텍 MX Master 3S",
+    "source": "https://prod.danawa.com/info/?pcode=17171645",
+    "image": "eval/images/3.jpg",
+    "observedLowPrice": 124710,
+    "expect": {
+      "modelAny": [
+        "mx master",
+        "3s"
+      ],
+      "minPrice": 74826,
+      "maxPrice": 199536
+    }
+  },
+  {
+    "name": "닌텐도 스위치 OLED 화이트",
+    "query": "닌텐도 스위치 OLED",
+    "source": "https://prod.danawa.com/info/?pcode=14678867",
+    "image": "eval/images/4.jpg",
+    "observedLowPrice": 446310,
+    "expect": {
+      "modelAny": [
+        "switch",
+        "스위치"
+      ],
+      "minPrice": 267786,
+      "maxPrice": 714096
+    }
+  },
+  {
+    "name": "다이슨 에어랩 코안다2x 멀티 스타일러 앤 드라이어 (레드벨벳/골드)",
+    "query": "다이슨 에어랩",
+    "source": "https://prod.danawa.com/info/?pcode=107989169",
+    "image": "eval/images/5.jpg",
+    "observedLowPrice": 1407540,
+    "expect": {
+      "modelAny": [
+        "airwrap",
+        "에어랩"
+      ],
+      "minPrice": 844524,
+      "maxPrice": 2252064
+    }
+  },
+  {
+    "name": "나이키 에어포스 1 07 CW2288-111 (병행)",
+    "query": "나이키 에어포스 1 07",
+    "source": "https://prod.danawa.com/info/?pcode=12987440",
+    "image": "eval/images/6.jpg",
+    "observedLowPrice": 99910,
+    "expect": {
+      "modelAny": [
+        "air force",
+        "에어포스"
+      ],
+      "minPrice": 59946,
+      "maxPrice": 159856
+    }
+  },
+  {
+    "name": "뉴발란스 530 클래식 운동화 MR530SG",
+    "query": "뉴발란스 530",
+    "source": "https://prod.danawa.com/info/?pcode=10359855",
+    "image": "eval/images/7.jpg",
+    "observedLowPrice": 64938,
+    "expect": {
+      "modelAny": [
+        "530",
+        "new balance"
+      ],
+      "minPrice": 38963,
+      "maxPrice": 103901
+    }
+  },
+  {
+    "name": "아디다스 삼바 OG B75806 (병행)",
+    "query": "아디다스 삼바 OG",
+    "source": "https://prod.danawa.com/info/?pcode=6209625",
+    "image": "eval/images/8.jpg",
+    "observedLowPrice": 47310,
+    "expect": {
+      "modelAny": [
+        "samba",
+        "삼바"
+      ],
+      "minPrice": 28386,
+      "maxPrice": 75696
+    }
+  },
+  {
+    "name": "샤오미 미홀 C9 ALL",
+    "query": "샤오미 로봇청소기",
+    "source": "https://prod.danawa.com/info/?pcode=95421062",
+    "image": "eval/images/9.jpg",
+    "observedLowPrice": 134420,
+    "expect": {
+      "modelAny": [
+        "xiaomi",
+        "샤오미",
+        "robot"
+      ],
+      "minPrice": 80652,
+      "maxPrice": 215072
+    }
+  },
+  {
+    "name": "APPLE 워치 SE 3세대 40mm 스타라이트 알루미늄 (스타라이트_스포츠밴드 S/M)",
+    "query": "애플워치 SE 2",
+    "source": "https://prod.danawa.com/info/?pcode=96981758",
+    "image": "eval/images/10.jpg",
+    "observedLowPrice": 359780,
+    "expect": {
+      "modelAny": [
+        "watch",
+        "워치"
+      ],
+      "minPrice": 215868,
+      "maxPrice": 575648
+    }
+  },
+  {
+    "name": "캐논 EOS R50 바디 (정품)",
+    "query": "캐논 EOS R50",
+    "source": "https://prod.danawa.com/info/?pcode=18984164",
+    "image": "eval/images/11.jpg",
+    "observedLowPrice": 837580,
+    "expect": {
+      "modelAny": [
+        "r50"
+      ],
+      "minPrice": 502548,
+      "maxPrice": 1340128
+    }
+  },
+  {
+    "name": "레고 테크닉 포르쉐 911 RSR (42096) (일반구매)",
+    "query": "레고 테크닉 포르쉐",
+    "source": "https://prod.danawa.com/info/?pcode=6969364",
+    "image": "eval/images/12.jpg",
+    "observedLowPrice": 264170,
+    "expect": {
+      "modelAny": [
+        "lego",
+        "레고",
+        "porsche",
+        "포르쉐"
+      ],
+      "minPrice": 158502,
+      "maxPrice": 422672
+    }
+  },
+  {
+    "name": "스탠리 퀜처 H2.0 플로우스테이트 텀블러 887ml (일반)",
+    "query": "스탠리 퀜처 텀블러",
+    "source": "https://prod.danawa.com/info/?pcode=19073507",
+    "image": "eval/images/13.jpg",
+    "observedLowPrice": 41280,
+    "expect": {
+      "modelAny": [
+        "stanley",
+        "스탠리",
+        "quencher"
+      ],
+      "minPrice": 24768,
+      "maxPrice": 66048
+    }
+  },
+  {
+    "name": "삼성전자 990 PRO M.2 NVMe (1TB)",
+    "query": "삼성 SSD 990 PRO",
+    "source": "https://prod.danawa.com/info/?pcode=18297002",
+    "image": "eval/images/14.jpg",
+    "observedLowPrice": 382700,
+    "expect": {
+      "modelAny": [
+        "990",
+        "ssd"
+      ],
+      "minPrice": 229620,
+      "maxPrice": 612320
+    }
+  }
+]
