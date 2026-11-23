@@ -20,7 +20,8 @@ for (const c of cases) {
     detail = `${r.status} · ${model} · ${lowest ?? '가격없음'}`;
     if (r.status === 'complete' || r.status === 'partial') answered++;
     const e = c.expect || {};
-    const modelOk = !e.modelIncludes || model.toLowerCase().includes(e.modelIncludes.toLowerCase());
+    const any = e.modelAny || (e.modelIncludes ? [e.modelIncludes] : []);
+    const modelOk = !any.length || any.some(w => model.toLowerCase().includes(w.toLowerCase()));
     const priceOk = e.commodity ? Boolean(r.produceMarket) : lowest != null && (e.minPrice == null || lowest >= e.minPrice) && (e.maxPrice == null || lowest <= e.maxPrice);
     verdict = modelOk && priceOk ? 'HIT' : 'MISS'; if (verdict === 'HIT') hits++;
   } catch (e) { detail = String(e.message || e); }
