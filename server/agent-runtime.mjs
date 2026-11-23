@@ -1,7 +1,7 @@
 import http from 'node:http';
 import { pathToFileURL } from 'node:url';
 import { chromium } from 'playwright';
-import { merchantUrl, productObservations } from './merchant-prices.mjs';
+import { publicHost, merchantUrl, productObservations } from './merchant-prices.mjs';
 import { finalizeMarket } from './market.mjs';
 import { identityProof, needsModel, requestLabel, modelMatches } from './identity-market.mjs';
 import { commodityFor, readProduce } from './produce-market.mjs';
@@ -37,14 +37,14 @@ async function guardedContext(browser, discovery) {
       const req=route.request(),u=new URL(req.url());
       if (u.protocol!=='https:' || u.username || u.password || u.port) return await route.abort();
       const isSearch=discovery && discoveryHost(u.hostname);
-      if (!isSearch && (!merchantUrl(u.href) || req.resourceType()!=='document')) return await route.abort();
+      if (!isSearch && (!merchantUrl(u.href) || req.resourceType()!=='document' || !await publicHost(u.hostname))) return await route.abort();
       if (!['GET','HEAD'].includes(req.method()) && !(isSearch && req.method()==='POST' && ['lens.google.com','lens.usercontent.google.com','www.google.com'].includes(u.hostname))) return await route.abort();
       if (['media','font','image'].includes(req.resourceType())) return await route.abort();
       const reply=await route.fetch({timeout:7000,maxRedirects:0});
       // Search results and localized stores may redirect. Return only validated redirects.
       if (reply.status()>=300 && reply.status()<400) {
         const dest=new URL(reply.headers().location||'',u);
-        if (dest.protocol!=='https:' || dest.username || dest.password || dest.port || !(merchantUrl(dest.href) || isSearch && discoveryHost(dest.hostname))) return await route.abort();
+        if (dest.protocol!=='https:' || dest.username || dest.password || dest.port || !(merchantUrl(dest.href) && await publicHost(dest.hostname) || isSearch && discoveryHost(dest.hostname))) return await route.abort();
         // A zero-delay document navigation is a fresh intercepted GET; ordinary HTTP redirects would
         // skip Playwright route interception on the next hop. Never replay uploaded bytes or POST bodies.
         const frame=req.frame(),count=(redirectCount.get(frame)||0)+1;
