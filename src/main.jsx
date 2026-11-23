@@ -15,6 +15,7 @@ import GhostLayer from './GhostLayer.jsx';
 import {gyroSupported,needsGyroPermission,requestGyro} from './lib/gyro-world.js';
 import './styles.css';
 import './ui-v2.css';
+import './ui-v3.css';
 
 const MAX_JOBS=4;
 // Compare the captured scene to the original mask's interior samples, not its
@@ -196,11 +197,11 @@ function App(){
   {ready&&mode==='auto'&&items.length===0&&!cameraError&&<div className="reticle" aria-hidden="true"><i/><i/><i/><i/><span>물체를 비춰 보세요</span></div>}
   <svg className="contours cutout-outline" viewBox="0 0 1 1" preserveAspectRatio="none" aria-hidden="true">{visible.map(({o,s})=><path key={o.id} fillRule="evenodd" d={(s.contours?.length?s.contours:[s.polygon]).map(r=>r.map((p,i)=>(i?'L':'M')+p.x+' '+p.y).join(' ')+'Z').join(' ')}/>)}</svg>
   <GhostLayer enabled={gyro} jobs={jobs} video={v} size={size} label={o=>(o.result?.identity?.model||o.result?.candidates?.[0]?.name||o.candidate?.name||'선택한 물체')+' · '+jobState(o)}/>
-  {!isCapturing&&visible.map(({o,box})=><React.Fragment key={o.id}><Hud o={o} box={box} fun={fun} measure={(id,n)=>setMeasured(m=>m[id]?.width===n.width&&m[id]?.height===n.height?m:{...m,[id]:n})} open={()=>setDetail(o.id)}/><button className="card-dismiss" style={{left:box.x+box.width-25,top:box.y+5}} aria-label={'물체 '+o.id+' 조사 취소'} onClick={e=>{e.stopPropagation();cancelJob(o.id)}}>X</button></React.Fragment>)}
+  {!isCapturing&&visible.map(({o,s,box})=>{const ax=(s.x+s.width/2)*size.width,ay=(s.y+s.height/2)*size.height,tilt={ry:Math.max(-18,Math.min(18,(ax/size.width-.5)*-36)),rx:Math.max(-8,Math.min(8,(ay/size.height-.5)*10)),k:Math.max(.86,Math.min(1.22,.78+Math.sqrt(s.width*s.height)*1.5))};return <React.Fragment key={o.id}><Leader box={box} ax={ax} ay={ay} phase={o.phase}/><Hud o={o} box={box} tilt={tilt} fun={fun} measure={(id,n)=>setMeasured(m=>m[id]?.width===n.width&&m[id]?.height===n.height?m:{...m,[id]:n})} open={()=>setDetail(o.id)}/><button className="card-dismiss" style={{left:box.x+box.width-25,top:box.y+5}} aria-label={'물체 '+o.id+' 조사 취소'} onClick={e=>{e.stopPropagation();cancelJob(o.id)}}>X</button></React.Fragment>})}
   {items.length>0&&<div className="job-tray" aria-label="진행 중인 조사">
    <div className="job-tray-head"><strong>조사 중인 물체</strong><button onClick={()=>setList(true)}>전체 보기</button></div>
    <div className="job-tray-list">{items.map(o=><button className="job-chip" key={o.id} onClick={()=>setDetail(o.id)}>
-    <span className={'job-dot '+(o.position?'':'muted')}/><span className="job-chip-name">{o.result?.identity?.model||o.result?.candidates?.[0]?.name||o.candidate?.name||'선택한 물체'}</span><span className="job-chip-state">{jobState(o)}</span><span className="job-chip-x" onClick={e=>{e.stopPropagation();cancelJob(o.id)}}>×</span>
+    {o.selection?.cutoutDataUrl?<img className="chip-thumb" alt="" src={o.selection.cutoutDataUrl}/>:<span className={'job-dot '+(o.position?'':'muted')}/>}<span className="job-chip-name">{o.result?.identity?.model||o.result?.candidates?.[0]?.name||o.candidate?.name||'선택한 물체'}</span><span className="job-chip-state">{jobState(o)}</span><span className="job-chip-x" onClick={e=>{e.stopPropagation();cancelJob(o.id)}}>×</span>
    </button>)}</div>
   </div>}
   {isCapturing?<nav aria-label="라벨 촬영"><button onClick={()=>endLabel(false)}>취소</button><button className="on" onClick={()=>endLabel(true)}>라벨 촬영 · 다시 식별</button></nav>:<nav aria-label="선택 모드">{[['auto','자동',Crosshair],['draw','터치·그리기',Hand]].map(([m,t,I])=><button key={m} aria-pressed={mode===m} className={mode===m?'on':''} onClick={()=>setMode(m)}><I size={16}/>{t}</button>)}</nav>}
@@ -213,12 +214,15 @@ function App(){
  </main>
 }
 function jobState(o){if(o.error)return '검색 실패';if(o.phase==='segmenting')return '누끼 찾는 중';if(o.phase==='identifying')return '물체 확인 중';if(o.phase==='loading')return '시세 조사 중';if(o.phase==='research_unavailable')return '판매처 연결 불가';if(o.phase==='followup_required'||o.result?.status==='followup_required')return '품번 필요';if(o.visibility==='reacquiring')return '누끼 재획득 중';if(o.visibility==='lost')return '시야 밖 · 앵커 유지';return o.phase==='person'?'놀이 카드':summarizeCard(o.result).price||'가격 확인';}
-function Hud({o,box,measure,open,fun}){const node=useRef(null),ref=useRef(measure);ref.current=measure;
+function Leader({box,ax,ay,phase}){const sx=Math.max(box.x,Math.min(ax,box.x+box.width)),sy=Math.max(box.y,Math.min(ay,box.y+box.height));const inside=sx===ax&&sy===ay;
+ return <svg className={'leader '+phase} aria-hidden="true">{!inside&&<line x1={sx} y1={sy} x2={ax} y2={ay}/>}<circle className="anchor-core" cx={ax} cy={ay} r="4"/><circle className="anchor-ripple" cx={ax} cy={ay} r="9"/><circle className="anchor-ripple two" cx={ax} cy={ay} r="9"/></svg>}
+function Hud({o,box,tilt,measure,open,fun}){const node=useRef(null),ref=useRef(measure);ref.current=measure;
  useLayoutEffect(()=>{const read=()=>{const r=node.current.getBoundingClientRect();ref.current(o.id,{width:r.width,height:r.height})};read();const ro=new ResizeObserver(read);ro.observe(node.current);return()=>ro.disconnect()},[o.id]);
  const r=o.result,c=r?.candidates[0]||o.candidate,display=summarizeCard(r),isPerson=o.phase==='person',needsLabel=o.phase==='followup_required'||r?.status==='followup_required';
-return <button className="card" ref={node} style={{left:box.x,top:box.y}} onClick={open} data-object-id={o.id} data-phase={o.phase}><small><i/>{needsLabel?'모델 번호 필요':o.phase==='identifying'?'물체 확인 중':o.phase==='loading'?'판매 가격 검색 중':isPerson?'캐릭터':o.phase==='research_unavailable'?'판매처 연결 불가':o.phase==='error'?'검색 실패':o.phase==='partial'&&!r?.produceMarket&&!r?.referenceMarket?'부분 결과':display.type}</small><strong>{isPerson?'사람':(r?.identity?[r.identity.brand,r.identity.model].join(' '):c?.name)|| (needsLabel?'품번·라벨을 가까이 비춰 주세요':o.phase==='identifying'?'누끼 확인 중':o.phase==='loading'?'판매처 대조 중':'확인된 상품 없음')}</strong>
+const sellers=(r?.offers||[]).reduce((n,x)=>n+(x.sellerCount||1),0);
+return <button className="card" ref={node} style={{left:box.x,top:box.y,'--ry':(tilt?.ry||0)+'deg','--rx':(tilt?.rx||0)+'deg','--k':tilt?.k||1}} onClick={open} data-object-id={o.id} data-phase={o.phase}><small><i/>{needsLabel?'모델 번호 필요':o.phase==='identifying'?'물체 확인 중':o.phase==='loading'?'판매 가격 검색 중':isPerson?'캐릭터':o.phase==='research_unavailable'?'판매처 연결 불가':o.phase==='error'?'검색 실패':o.phase==='partial'&&!r?.produceMarket&&!r?.referenceMarket?'부분 결과':display.type}</small><strong>{isPerson?'사람':(r?.identity?[r.identity.brand,r.identity.model].join(' '):c?.name)|| (needsLabel?'품번·라벨을 가까이 비춰 주세요':o.phase==='identifying'?'누끼 확인 중':o.phase==='loading'?'판매처 대조 중':'확인된 상품 없음')}</strong>
  {['loading','identifying'].includes(o.phase)?<span className="skeleton"/>:<b>{isPerson?(fun&&o.coins?'₩'+o.coins.price.toLocaleString('ko-KR')+' 놀이 가격':'놀이 모드 꺼짐'):display.price}</b>}
- <footer>{isPerson?'실제 가격 아님':needsLabel?'브랜드·모델 근거 필요':o.phase==='identifying'?'선택한 물체 식별 중':o.phase==='loading'?'판매처 대조 중':o.visibility==='reacquiring'?'누끼 재획득 중':display.basis} <ChevronRight size={13}/></footer></button>}
+ <footer>{sellers>0&&<em className="trust">{sellers}곳 비교</em>}{isPerson?'실제 가격 아님':needsLabel?'브랜드·모델 근거 필요':o.phase==='identifying'?'선택한 물체 식별 중':o.phase==='loading'?'판매처 대조 중':o.visibility==='reacquiring'?'누끼 재획득 중':display.basis} <ChevronRight size={13}/></footer></button>}
 function Evidence({o,close,click,fun,beginLabel,pause,resume}){
  const r=o.result,display=summarizeCard(r),c=r?.candidates?.[0]??o.candidate;
  const title=r?.identity?.model?[r.identity.brand,r.identity.model].filter(Boolean).join(' '):c?.name;

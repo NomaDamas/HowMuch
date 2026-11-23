@@ -25,3 +25,10 @@ test('inferred identity needs a specific brand+model with high confidence and ex
   assert.equal(inferredProof({ brand: 'Ray-Ban', model: 'Wayfarer RB2140', confidence: .9, category: 'sunglasses' }), null);
   assert.equal(inferredProof({ brand: 'unknown', model: 'x100', confidence: .9 }), null);
 });
+
+test('model alias matching tolerates generic descriptors like Low/Model/로우', () => {
+  const id = { brand: 'Nike', model: 'Air Force 1 Low', brandAliases: ['나이키'], modelAliases: ['에어포스 1 로우', 'AF1 Low'] };
+  assert.equal(modelMatches({ title: '나이키 에어포스 1 07 CW2288-111 (병행)' }, id), true);
+  assert.equal(modelMatches({ title: '나이키 덩크 로우 DD1391' }, id), false);
+  assert.equal(modelMatches({ title: '아디다스 에어포스 1' }, id), false);
+});

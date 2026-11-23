@@ -24,7 +24,11 @@ export function identityProof(plan) {
 const aliasList=v=>Array.isArray(v)?v.filter(x=>typeof x==='string'&&x.trim()).slice(0,4).map(x=>x.trim().slice(0,100)):[];
 export function modelMatches(offer,identity){
   if(!identity)return false;
-  const models=[identity.model,...aliasList(identity.modelAliases)],brands=[identity.brand,...aliasList(identity.brandAliases)];
+  // Aliases vary between VLM runs ("에어포스 1 로우" vs "에어포스 1"), so also try each name without generic descriptors.
+  const generic=/(?:^|\s)(?:low|high|mid|model|version|edition|로우|하이|미드|모델|버전)(?=\s|$)/giu;
+  const core=v=>squash(v).replace(generic,' ').replace(/\s+/g,' ').trim();
+  const withCore=list=>[...new Set(list.flatMap(v=>[v,core(v)]).filter(v=>v&&squash(v).length>=2))];
+  const models=withCore([identity.model,...aliasList(identity.modelAliases)]),brands=[identity.brand,...aliasList(identity.brandAliases)];
   return models.some(m=>hasToken([offer?.title,offer?.model,offer?.sku].join(' '),m))&&brands.some(b=>hasToken([offer?.title,offer?.brand].join(' '),b));
 }
 export const requestLabel=()=>({reason:'exact_model_not_visible',prompt:'제품 본체의 각인, 신발 안쪽 태그, 의류 라벨 등에서 브랜드와 모델번호가 함께 보이도록 가까이 비춰 주세요.'});

@@ -116,7 +116,7 @@ final class PriceScene: UIViewController, ARSCNViewDelegate {
         detected=true
         if let p=placed,let pinned,simd_distance(p.center,t.center)<0.055 {
             if let node=scene.node(for:pinned){
-                node.childNode(withName:"priceLabel",recursively:false)?.simdWorldPosition=node.simdWorldPosition+labelOffset(t)
+                node.childNode(withName:"priceLabel",recursively:true)?.simdWorldPosition=node.simdWorldPosition+labelOffset(t)
                 node.isHidden=false
             }
             guide.text="상품 위치 확인 · 자동 추적";return
@@ -140,17 +140,15 @@ final class PriceScene: UIViewController, ARSCNViewDelegate {
     func renderer(_ renderer:SCNSceneRenderer, didAdd node:SCNNode, for anchor:ARAnchor) {
         DispatchQueue.main.async { [weak self] in
             guard let self=self, self.pinned?.identifier==anchor.identifier, let (title,price)=self.card else{return}
-            let texture=UIGraphicsImageRenderer(size:CGSize(width:720,height:270)).image { _ in
-                UIColor(red:0.05,green:0.10,blue:0.12,alpha:0.82).setFill();UIBezierPath(roundedRect:CGRect(x:0,y:0,width:720,height:270),cornerRadius:32).fill()
-                let p=NSMutableParagraphStyle();p.lineBreakMode = .byTruncatingTail
-                (title as NSString).draw(in:CGRect(x:34,y:28,width:652,height:84),withAttributes:[.font:UIFont.boldSystemFont(ofSize:46),.foregroundColor:UIColor.white,.paragraphStyle:p])
-                (price as NSString).draw(in:CGRect(x:34,y:126,width:652,height:118),withAttributes:[.font:UIFont.systemFont(ofSize:42),.foregroundColor:UIColor.systemGreen,.paragraphStyle:p])
-            }
-            let plane=SCNPlane(width:0.19,height:0.071);plane.firstMaterial?.diffuse.contents=texture;plane.firstMaterial?.lightingModel = .constant;plane.firstMaterial?.isDoubleSided=true
-            let label=SCNNode(geometry:plane);label.name="priceLabel";node.addChildNode(label)
-            label.simdWorldPosition=node.simdWorldPosition+self.labelOffset(self.autoMode ? self.measured:nil);label.constraints=[SCNBillboardConstraint()]
+            let offset=self.labelOffset(self.autoMode ? self.measured:nil)
+            let hud=PriceHUD.make(title:title,price:price,to:simd_float3(offset.x,offset.y+0.02,offset.z))
+            node.addChildNode(hud)
             node.isHidden = !self.hasTracking || (self.autoMode && !self.detected)
         }
+    }
+    func renderer(_ renderer:SCNSceneRenderer, updateAtTime time:TimeInterval) {
+        guard let pov=renderer.pointOfView else{return}
+        scene.scene.rootNode.enumerateChildNodes { n,_ in if n.name == "hud" || n.childNode(withName:"hud",recursively:false) != nil { if let h = (n.name == "hud" ? n : n.childNode(withName:"hud",recursively:false)) { PriceHUD.rescale(h,cameraPosition:pov.worldPosition) } } }
     }
     func session(_ session:ARSession, cameraDidChangeTrackingState camera:ARCamera) {
         let ok:Bool; if case .normal=camera.trackingState {ok=true}else{ok=false}

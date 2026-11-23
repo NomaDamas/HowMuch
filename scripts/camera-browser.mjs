@@ -28,7 +28,7 @@ await page.locator('.card').first().click();await page.getByRole('dialog',{name:
 const mode=m=>page.getByRole('button',{name:m,exact:true}).click(), list=page.getByRole('dialog',{name:'조사 목록'}), closeList=()=>list.getByRole('button',{name:'카메라로 돌아가기'}).click();
 const openList=()=>page.getByRole('button',{name:/^조사 목록/}).click();
 const cancelInList=async id=>{await openList();await list.getByRole('button',{name:'목록에서 물체 '+id+' 조사 취소',exact:true}).click();await closeList()};
-const tap=()=>page.mouse.click(38,425); const waitN=(n)=>page.waitForFunction(n=>document.querySelectorAll('.card').length===n,n);
+const tap=()=>page.mouse.click(300,300); const waitN=(n)=>page.waitForFunction(n=>document.querySelectorAll('.card').length===n,n);
 await mode('터치·그리기');await waitN(2); // finished automatic jobs survive mode transitions
 const invalidBefore=segmentRequests.length;
 await page.evaluate(()=>{document.querySelector('video').srcObject.getVideoTracks()[0].enabled=false;});
@@ -38,7 +38,7 @@ await page.evaluate(()=>{const v=document.querySelector('video');Object.definePr
 const zeroManual=segmentRequests.filter(p=>p.point||p.selection).length;await waitN(0);await tap();await page.waitForTimeout(200);assert.equal(segmentRequests.filter(p=>p.point||p.selection).length,zeroManual,'zero-dimension camera does not submit manual selection');
 await page.evaluate(()=>{delete document.querySelector('video').videoHeight;});await waitN(2);
 const autoIds=await page.locator('.card').evaluateAll(ns=>ns.map(n=>n.dataset.objectId));
-holdManual=true;await tap();await page.waitForTimeout(120);assert(releaseManual,'manual segmentation pending');
+if(process.env.HOWMUCH_SHOTS)await page.screenshot({path:process.env.HOWMUCH_SHOTS+'/before-tap.png'});holdManual=true;await tap();await page.waitForTimeout(120);assert(releaseManual,'manual segmentation pending');
 await mode('자동');const idBefore=new Set(autoIds);releaseManual();await waitN(3);
 const manualId=(await page.locator('.card').evaluateAll(ns=>ns.map(n=>n.dataset.objectId))).find(id=>!idBefore.has(id));
 assert(manualId,'pending manual subject finishes after mode change');
