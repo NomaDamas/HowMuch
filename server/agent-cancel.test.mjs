@@ -1,7 +1,8 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {once} from 'node:events';
-import {createAgentServer,research} from './agent-runtime.mjs';
+import {createAgentServer} from './agent-runtime.mjs';
+import {agentResearch} from './agent-research.mjs';
 import {needsModel} from './identity-market.mjs';
 const im='data:image/png;base64,AAAA';
 const body={imageDataUrl:im,cutoutDataUrl:im};
@@ -22,14 +23,12 @@ test('close gateway transport cancels only its own model call',async t=>{
  await new Promise((resolve,reject)=>{const stop=Date.now()+1500;function next(){if(stopped.has('target'))return resolve();if(Date.now()>stop)return reject(Error('agent did not cancel'));setTimeout(next,10);}next();});
  assert.equal(started.get('sibling').aborted,false);
 });
-test('cancel during browser launch closes the acquired browser without starting a context',async()=>{
- const ctl=new AbortController();let closed=0;
- await assert.rejects(research(body,{signal:ctl.signal,ask:async()=>({kind:'product',name:'mug',confidence:.9}),launch:async()=>{ctl.abort();return {close:async()=>{closed++;},newContext:()=>assert.fail('cancelled context creation')};}}),{name:'AbortError'});
- assert.ok(closed>=1);
-});
-test('active model receives the same request-scoped abort signal',async()=>{
- const ctl=new AbortController();
- await assert.rejects(research(body,{signal:ctl.signal,ask:async(_,signal)=>{assert.equal(signal,ctl.signal);ctl.abort();signal.throwIfAborted();}}),{name:'AbortError'});
+test('an aborted request cancels every running agent and rejects',async()=>{
+ const ctl=new AbortController();let seen=0;
+ const runAgent=(f,i,o)=>{seen++;return new Promise((_,rej)=>o.signal.addEventListener('abort',()=>rej(Error('aborted')),{once:true}))};
+ const p=agentResearch(body,{signal:ctl.signal,agents:3,graceMs:10,runAgent});
+ setTimeout(()=>ctl.abort(),20);
+ await assert.rejects(p,{name:'AbortError'});assert.equal(seen,3);
 });
 test('variant-sensitive retail categories always require a model',()=>{
  for(const category of ['운동화','가방','손목시계','카메라 렌즈','전동공구','jumper','sneakers','backpack','watch','lens','cordless drill','unbranded T-shirt'])assert.ok(needsModel({category}),category);

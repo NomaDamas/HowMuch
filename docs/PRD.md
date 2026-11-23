@@ -61,3 +61,10 @@ The automatic multi-object proposal model is a measured aid to segmentation only
 ## Verbatim requirements and gap closure
 
 All approved user messages are preserved unmodified in [APPROVED_REQUIREMENTS.md](APPROVED_REQUIREMENTS.md). Person mode is a playful, mood-based fictional price (₩ 놀이 가격) shown by default and switchable off; it never evaluates looks or body. Real-device ARKit/ARCore validation remains deferred ([#31](https://github.com/NomaDamas/HowMuch/issues/31)).
+
+## Pricing tiers (approved refinement)
+
+> 식별실패는 어쩔수없으니깐 검색계층을 나눠서 무슨 모델인지 모르면 그 물체의 정체에 한해서만 검색하고, 무슨 모델인지까지 알려면 모델명같은걸 입력 혹은 카메라에 비춰라로 하고, 오차는 괜찮아 대강적인 시세만 알면되니깐.
+> 파나 감자 이런 농작물 혹은 어디에서 사나 다를게 없는것들도 모델을 찾는것이 아닌 인터넷 시세를 바로 딥리서치해서 볼수있게 해야하고. 모델 번호 불명 케이스는 여러개 한 5개 ~ 10개 시세를 평균때리는거고. 농산물 시세도 에이전트로 이전하도록하고 에이전틱 검색만이 기능으로 들어가야해
+
+Three tiers, agent-only: **exact model** (lowest price of that model), **rough estimate** (3-10 comparable listings averaged when the model is unknown, with a request to type the model or show the label), and **market unit price** (food and other shop-independent goods researched directly, no model). Details in [AGENT_RESEARCH.md](AGENT_RESEARCH.md).

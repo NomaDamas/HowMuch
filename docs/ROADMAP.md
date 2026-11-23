@@ -16,7 +16,7 @@ HowMuch is an AGPL multimodal research agent. A user points at a specific produc
 
 ## Approved open-source search building blocks
 
-The web research worker imports Playwright. Browser Use, Firecrawl, Crawl4AI and SearXNG are potential alternatives, not installed providers. The [component inventory](COMMERCIAL_READINESS.md) distinguishes code and weights used by the build from projects considered.
+Research is agent-only (see AGENT_RESEARCH.md); there is no crawler or browser worker.
 
 Agent-only research is the product path: visual-search UI tools and VLM-generated text-search tools run concurrently in one research run, then agent browser tools open pages and collect evidence. Search APIs are deliberately excluded as a fallback. Every tool result returns source URL, timestamp, merchant, condition and price; no result is shown as a verified lowest price without evidence.
 

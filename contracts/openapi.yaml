@@ -122,6 +122,7 @@ components:
       properties:
         imageDataUrl: { type: string, pattern: '^data:image/' }
         cutoutDataUrl: { type: string, pattern: '^data:image/' }
+        modelHint: { type: string, maxLength: 80, description: 'Model or product name typed by the user; agents verify it against the picture.' }
         labelDataUrl: { type: string, pattern: '^data:image/', description: 'Optional close-up of the same object; only passed to the VLM.' }
         region: { type: string, maxLength: 30, description: 'Korean retail market region; defaults to 전국' }
         selection: { $ref: '#/components/schemas/Selection' }
@@ -148,36 +149,22 @@ components:
       required: [status,candidates,offers,tools,startedAt,completedAt]
       properties:
         status: { type: string, enum: [complete, completed, partial, followup_required, no_result, research_unavailable, error] }
-        pricingMode: { type: string, enum: [exact_model, produce_market, verified_offer, category_reference] }
-        referenceMarket:
+        pricingMode: { type: string, enum: [exact_model, type_estimate, market_unit], description: 'exact_model: lowest price of one agreed model. type_estimate: model unknown, rough average of >=3 comparable listings (followup asks for the model). market_unit: unit market price for goods where the shop does not matter (food).' }
+        estimate:
           type: object
-          description: 'Prices of other items, never an offer for the selected object. Each listing is a pack price; do not mix currencies or units.'
-          required: [scope, listings]
+          description: 'Present for type_estimate and market_unit. mean/median/min/max over sampleCount listings (equal to offers.length, at least 3). Never a lowest price of a specific model.'
+          required: [mean, median, min, max, currency, sampleCount]
           properties:
-            scope:
-              type: object
-              required: [kind, material, visualEvidence]
-              properties:
-                kind: { type: string, enum: [mug, bowl, plate, tumbler, basic-tee] }
-                material: { type: string }
-                visualEvidence: { type: string }
-                labelEvidence: { type: string }
-            listings:
-              type: array
-              minItems: 1
-              maxItems: 4
-              items:
-                allOf:
-                  - { $ref: '#/components/schemas/Offer' }
-                  - type: object
-                    required: [quantity, unit, quantityEvidence, basis, kind, material]
-                    properties:
-                      quantity: { type: integer, minimum: 1 }
-                      unit: { type: string, enum: ['개', '장'] }
-                      quantityEvidence: { type: string }
-                      basis: { type: string, enum: [item_only] }
-                      kind: { type: string, enum: [mug, bowl, plate, tumbler, basic-tee] }
-                      material: { type: string }
+            mean: {type: number}
+            median: {type: number}
+            min: {type: number}
+            max: {type: number}
+            currency: {type: string, enum: [KRW, USD, JPY, EUR]}
+            sampleCount: {type: integer, minimum: 3}
+            unit: {type: string, description: 'market_unit only, e.g. kg'}
+            region: {type: string}
+            observedAt: {type: string}
+            note: {type: string}
         followup:
           type: object
           required: [reason, prompt]
@@ -190,34 +177,6 @@ components:
             model: {type: string}
             brandEvidence: {type: array, items: {type: string}}
             modelEvidence: {type: array, items: {type: string}}
-        produceMarket:
-          type: object
-          required: [commodity, region, quantity, unit, min, median, max, currency, samples]
-          properties:
-            commodity: {type: string}
-            region: {type: string}
-            unit: {type: string}
-            quantity: {type: number}
-            currency: {type: string, enum: [KRW]}
-            min: {type: number}
-            max: {type: number}
-            median: {type: number}
-            samples:
-              type: array
-              items:
-                type: object
-                required: [title, source, region, quantity, unit, price, currency, url, observedAt, checkedAt]
-                properties:
-                  title: {type: string}
-                  source: {type: string}
-                  region: {type: string}
-                  quantity: {type: number}
-                  unit: {type: string}
-                  price: {type: number}
-                  currency: {type: string, enum: [KRW]}
-                  url: {type: string, format: uri}
-                  observedAt: {type: string, format: date}
-                  checkedAt: {type: string, format: date-time}
         candidates: { type: array, items: { type: object, required: [name,confidence], properties: { name: {type: string}, brand: {type: string}, model: {type: string}, category: {type: string}, confidence: {type: number, minimum: 0, maximum: 1} } } }
         offers: { type: array, items: { $ref: '#/components/schemas/Offer' } }
         lowest: { oneOf: [{type: string}, {$ref: '#/components/schemas/Offer'}] }

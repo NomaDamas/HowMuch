@@ -1,14 +1,18 @@
 export const amount = (value, currency) => Number.isFinite(value) && ['KRW','EUR','JPY','USD'].includes(currency)
   ? new Intl.NumberFormat('ko-KR', {style:'currency', currency}).format(value) : '';
 export function summarizeCard(result) {
-  const reference=result?.pricingMode==='category_reference'&&result.referenceMarket?.listings?.[0];
-  if(reference){const price=amount(reference.price,reference.currency),basis=reference.quantity+reference.unit+' 구성 · 배송비 제외';return {price,basis:'유사 상품 · '+basis,type:'동일 상품 아님',label:'유사 상품 참고 '+price+' / '+reference.quantity+reference.unit};}
-  const p = result?.produceMarket;
-  if (p?.samples?.length && p.quantity>0 && p.unit) return {
-    price:amount(p.median,p.currency), basis:p.region+' · '+p.quantity+p.unit+' 기준'+(p.cut?' · '+p.cut:'')+(p.grade&&p.grade!=='unknown'?' · '+p.grade:''), type:p.cut?'축수산물 참고 시세':'농산물 참고 시세',
-    label:amount(p.median,p.currency)+' / '+p.quantity+p.unit+' · '+p.region+' 참고가'
-  };
-  if(result?.status==='followup_required') return {price:'품번을 비춰 주세요',basis:'모델 식별 필요',type:'가격 보류'};
+  const e=result?.estimate;
+  // Tier 3: unit market price (food etc.): no model, price per kg / piece
+  if(result?.pricingMode==='market_unit'&&e?.unit){
+    const price=amount(e.median,e.currency);
+    return {price:price+' / '+e.unit,basis:(e.region||'전국')+' · '+e.sampleCount+'곳 시세 · '+(e.observedAt||''),type:'시장 시세',label:price+' / '+e.unit+' · '+(e.region||'전국')+' 시세'};
+  }
+  // Tier 2: model unknown: rough average of comparable listings
+  if(result?.pricingMode==='type_estimate'&&e){
+    const price='약 '+amount(e.mean,e.currency);
+    return {price,basis:e.sampleCount+'개 비슷한 상품 평균 · '+amount(e.min,e.currency)+'~'+amount(e.max,e.currency),type:'대략 시세 · 모델 미확인',label:price+' (모델 미확인 평균)'};
+  }
+  if(result?.status==='followup_required') return {price:'모델명을 알려 주세요',basis:'가격을 찾지 못했어요 · 모델명 입력 또는 라벨 촬영',type:'가격 보류'};
   const lo = typeof result?.lowest==='string'?result.offers?.find(o=>o.id===result.lowest||o.url===result.lowest):result?.lowest;
   const price=amount(lo?.comparePrice??lo?.price,lo?.compareCurrency??lo?.currency);
   if(price) {
@@ -16,7 +20,7 @@ export function summarizeCard(result) {
     const basis=(n===1?'단일 판매가':'비교 '+n+'건')+' · '+(result.representative?.basis==='delivered'?'배송비 포함':'상품가 기준');
     return {price,basis,type:'확인한 판매가',label:price+' · '+basis};
   }
-  return {price:'가격 미확인', basis:'동일 상품 가격 근거 없음',type:'가격 조사'};
+  return {price:'가격 미확인', basis:'가격 근거를 찾지 못했어요',type:'가격 조사'};
 }
 export function spatialHandoff(title,label,template) {
   if(!title||!label) return null;

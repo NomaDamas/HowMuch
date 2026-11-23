@@ -2,6 +2,7 @@ export interface ResearchContext {
   imageDataUrl: string;
   cutoutDataUrl: string;
   labelDataUrl?: string;
+  modelHint?: string;
   region?: string;
   selection: { x: number; y: number; width: number; height: number; polygon?: Array<{ x: number; y: number }> };
   locale: string;
@@ -23,10 +24,9 @@ export interface ResearchOffer {
 }
 
 export interface ResearchResult {
-  pricingMode?: 'exact_model' | 'produce_market' | 'verified_offer' | 'category_reference';
-  referenceMarket?: import('../../sdk/types').ReferenceMarket;
+  pricingMode?: 'exact_model' | 'type_estimate' | 'market_unit';
+  estimate?: import('../../sdk/types').Estimate;
   identity?: import('../../sdk/types').ModelIdentity;
-  produceMarket?: import('../../sdk/types').ProduceMarket;
   followup?: {reason:'exact_model_not_visible';prompt:string};
   candidates: Array<{ name: string; brand?: string; model?: string; category?: string; confidence: number }>;
   offers: ResearchOffer[];

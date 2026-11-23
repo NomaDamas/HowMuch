@@ -1,39 +1,45 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { assertResearchEnvelope, isValidResearchInput, isValidResearchResult } from './research-contract.mjs';
+import { assertResearchEnvelope, isValidResearchInput } from './research-contract.mjs';
 
-const input = { cutout: 'data:image/png;base64,AA', image: 'data:image/png;base64,AA', selection: { x: 0, y: 0, width: 0.5, height: 0.5 }, locale: 'ko-KR' };
-const offer = { title: 'Item', url: 'https://shop.example/item', merchant: 'shop.example', availability: 'in_stock', price: 1000, currency: 'KRW', condition: 'new', checkedAt: new Date().toISOString(), evidence: ['price shown'], confidence: 0.9 };
-const result = { candidates: [{ name: 'Item', confidence: 0.9 }], offers: [offer], lowest: offer, highest: offer, representative: { min: 1000, max: 1000, median: 1000, currency: 'KRW' }, startedAt: new Date().toISOString(), completedAt: new Date().toISOString(), tools: ['visual_search_agent', 'open_page'] };
+const now = new Date().toISOString();
+const listing = (i, price = 1000) => ({ id: 'offer-' + i, title: 'item ' + i, url: `https://shop${i}.co.kr/p/${i}`, merchant: `shop${i}.co.kr`, price, currency: 'KRW', condition: 'new', availability: 'in_stock', checkedAt: now, evidence: ['seen'], confidence: .6 });
+const base = { candidates: [{ name: '대파', confidence: .8 }], tools: ['agent_web_search'], startedAt: now, completedAt: now };
+const est = (n, extra = {}) => ({ ...base, status: 'partial', pricingMode: 'type_estimate', offers: Array.from({ length: n }, (_, i) => listing(i, 1000 + i * 100)),
+  estimate: { mean: 1100, median: 1100, min: 1000, max: 1200, currency: 'KRW', sampleCount: n }, followup: { reason: 'exact_model_not_visible', prompt: '모델명을 입력해 주세요' }, ...extra });
+const market = (extra = {}) => ({ ...est(3), status: 'complete', pricingMode: 'market_unit', followup: undefined, estimate: { mean: 1100, median: 1100, min: 1000, max: 1200, currency: 'KRW', sampleCount: 3, unit: 'kg', region: '전국' }, ...extra });
 
-test('research input rejects out-of-frame selections', () => {
-  assert.equal(isValidResearchInput(input), true);
-  assert.equal(isValidResearchInput({ ...input, selection: { x: 0.8, y: 0, width: 0.5, height: 0.5 } }), false);
+test('a rough estimate needs >= 3 listings, matching sample count, and a follow-up', () => {
+  assert.ok(assertResearchEnvelope(est(3)));
+  assert.throws(() => assertResearchEnvelope(est(2)), /invalid_contract/);
+  assert.throws(() => assertResearchEnvelope(est(3, { estimate: { mean: 1100, median: 1100, min: 1000, max: 1200, currency: 'KRW', sampleCount: 5 } })), /invalid_contract/);
+  assert.throws(() => assertResearchEnvelope(est(3, { followup: undefined })), /invalid_contract/);
 });
-
-test('research result requires evidence-backed offers', () => {
-  assert.equal(isValidResearchResult(result), true);
-  assert.equal(isValidResearchResult({ ...result, offers: [{ ...offer, evidence: [] }] }), false);
-  assert.throws(() => assertResearchEnvelope({ status: 'completed', result: { ...result, offers: [] } }), /invalid_contract/);
-  assert.deepEqual(assertResearchEnvelope({ status: 'completed', result }).offers, [offer]);
+test('an estimate never claims a lowest price or an identity', () => {
+  assert.throws(() => assertResearchEnvelope(est(3, { lowest: 'offer-0' })), /invalid_contract/);
+  assert.throws(() => assertResearchEnvelope(est(3, { identity: { brand: 'A', model: 'B' } })), /invalid_contract/);
 });
-
-test('an unavailable or stale page cannot supply the headline price',()=>{
-  for(const change of [{availability:'unknown'},{availability:'out_of_stock'},{checkedAt:'2000-01-01'}]){
-    const bad={...offer,...change,id:'o'};
-    assert.equal(isValidResearchResult({...result,offers:[bad],lowest:'o',highest:'o'}),false);
+test('a market unit price needs a unit and a region', () => {
+  assert.ok(assertResearchEnvelope(market()));
+  assert.throws(() => assertResearchEnvelope(market({ estimate: { mean: 1, median: 1, min: 1, max: 1, currency: 'KRW', sampleCount: 3, region: '전국' } })), /invalid_contract/);
+});
+test('listings must be https pages whose merchant is the exact hostname, fresh and evidenced', () => {
+  for (const patch of [{ url: 'http://shop0.co.kr/p' }, { merchant: 'other.co.kr' }, { evidence: [] }, { checkedAt: '2020-01-01T00:00:00Z' }, { price: -1 }]) {
+    const r = est(3); r.offers[0] = { ...r.offers[0], ...patch };
+    assert.throws(() => assertResearchEnvelope(r), /invalid_contract/, JSON.stringify(patch));
   }
 });
-
-test('headline evidence belongs to the selected model and the specific commodity table',()=>{
-  const candidate={name:'Jacket',category:'jacket',brand:'Acme',model:'J-204',confidence:.92};
-  const identity={brand:'Acme',model:'J-204',modelEvidence:['J-204'],brandEvidence:['Acme']};
-  const exact={...result,pricingMode:'exact_model',identity,candidates:[candidate],offers:[{...offer,title:'Acme J-204'}]};
-  assert.equal(isValidResearchResult(exact),true);
-  assert.equal(isValidResearchResult({...exact,candidates:[{...candidate,model:'J-205'}]}),false);
-  const sample={title:'사과 / 후지',source:'aT KAMIS · 경동',region:'서울',currency:'KRW',quantity:10,unit:'개',price:15400,url:'https://www.kamis.or.kr/customer/price/retail/item.do?action=priceinfo&productrankcode=1&itemcategorycode=400&itemcode=411&kindcode=05',checkedAt:new Date().toISOString(),observedAt:new Date(Date.now()-86400000).toISOString().slice(0,10)};
-  const m={commodity:'사과',region:'서울',currency:'KRW',quantity:10,unit:'개',min:15400,max:15400,median:15400,samples:[sample]};
-  const produce={...result,pricingMode:'produce_market',offers:[],lowest:undefined,highest:undefined,representative:undefined,produceMarket:m};
-  assert.equal(isValidResearchResult(produce),true);
-  assert.equal(isValidResearchResult({...produce,produceMarket:{...m,samples:[{...sample,url:sample.url.replace('411','212')}]}}),false);
+test('"complete" is only for an exact price or a market unit price; follow-up means nothing was priced', () => {
+  assert.throws(() => assertResearchEnvelope({ ...est(3), status: 'complete' }), /invalid_contract/);
+  assert.throws(() => assertResearchEnvelope({ ...base, status: 'followup_required', offers: [listing(0)], pricingMode: 'exact_model' }), /invalid_contract/);
+  assert.ok(assertResearchEnvelope({ ...base, status: 'followup_required', offers: [], followup: { reason: 'exact_model_not_visible', prompt: 'x' } }));
+  assert.ok(assertResearchEnvelope({ ...base, status: 'no_result', offers: [] }));
+  assert.throws(() => assertResearchEnvelope({ status: 'weird' }), /invalid_contract/);
+});
+test('input validation accepts an optional typed model name only when sane', () => {
+  const input = { imageDataUrl: 'data:image/png;base64,AAAA', cutoutDataUrl: 'data:image/png;base64,AAAA', selection: { x: .1, y: .1, width: .5, height: .5 } };
+  assert.equal(isValidResearchInput(input), true);
+  assert.equal(isValidResearchInput({ ...input, modelHint: 'AirPods Pro 2' }), true);
+  assert.equal(isValidResearchInput({ ...input, modelHint: '' }), false);
+  assert.equal(isValidResearchInput({ ...input, modelHint: 'x'.repeat(81) }), false);
 });

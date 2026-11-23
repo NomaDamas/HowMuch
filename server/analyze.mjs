@@ -24,7 +24,6 @@ export async function researchAgent(input, signal, onPhase) {
   const image=input.imageDataUrl||input.image, cutout=input.cutoutDataUrl||input.cutout;
   const validated=raw=>{
     const result=assertResearchEnvelope(raw);
-    if(result.referenceMarket?.scope?.kind==='basic-tee'&&!input.labelDataUrl)throw Error('reference_label_required');
     return result;
   };
   const streamed=typeof onPhase==='function';
@@ -32,9 +31,9 @@ export async function researchAgent(input, signal, onPhase) {
     headers:{'content-type':'application/json',accept:streamed?'application/x-ndjson':'application/json'},body:JSON.stringify({
       runtime:'howmuch-research-v1',task:'multimodal-research-agent',jobId:randomUUID(),
       imageContext:{fullFrameDataUrl:image,cutoutDataUrl:cutout,selection:input.selection},
-      ...(input.labelDataUrl && {labelDataUrl:input.labelDataUrl}), ...(input.region && {region:input.region}),
+      ...(input.labelDataUrl && {labelDataUrl:input.labelDataUrl}), ...(input.modelHint && {modelHint:input.modelHint}), ...(input.region && {region:input.region}),
       imageDataUrl:image,cutoutDataUrl:cutout,selection:input.selection,locale:input.locale||'ko-KR',
-      tools:['visual_search','text_search','open_page','extract_offer','compare_offers']
+      tools:['agent_web_search']
     })});
   if (!response.ok) throw Object.assign(Error('research_agent_unavailable'),{status:response.status});
   if (!streamed || !response.headers.get('content-type')?.includes('application/x-ndjson')) return validated(await response.json());

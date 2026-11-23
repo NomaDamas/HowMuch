@@ -19,18 +19,17 @@
     "smoke:pairing": "node scripts/pairing-browser.mjs",
     "smoke:world-anchor": "node scripts/world-anchor-browser.mjs",
     "postinstall": "node scripts/postinstall-star.mjs",
-    "eval:prices": "node scripts/eval-prices.mjs eval/cases.json",
-    "login:browser": "node scripts/login-browser.mjs"
+    "eval:prices": "node scripts/eval-prices.mjs eval/cases.json"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "latest",
     "lucide-react": "latest",
     "react": "latest",
     "react-dom": "latest",
-    "vite": "latest"
+    "vite": "latest",
+    "playwright": "^1.65.1"
   },
   "dependencies": {
-    "playwright": "^1.65.1",
     "qrcode": "^1.5.4"
   }
 }

@@ -45,3 +45,6 @@
 
 @media (max-width:400px){.header-actions .gyro-btn{font-size:0;gap:0;padding:0 12px}.header-actions button{padding:8px 10px}.camera header>b{font-size:15px}}
 .camera .card .trust,.camera .card footer{white-space:nowrap}
+.model-form{display:flex;gap:8px;margin:10px 0}
+.model-form input{flex:1;min-height:44px;padding:0 12px;border-radius:12px;border:1px solid var(--hm-line);background:rgba(255,255,255,.08);color:#fff;font-size:16px}
+.model-form .primary{min-height:44px;white-space:nowrap}
