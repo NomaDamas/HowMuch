@@ -4,7 +4,7 @@ Point the mobile camera at a product, or tap/draw around it. Each tap, long pres
 
 ## Run localhost
 
-Requires Node 22+, npm, a configured commercial VLM credential, Playwright Chromium, and the segmentation model. Use the shell environment or a private, untracked environment file (never prefix secrets with `VITE_`).
+Requires Node 22+, npm, a configured commercial VLM credential (with the provider's hosted web search), and the segmentation model. Use the shell environment or a private, untracked environment file (never prefix secrets with `VITE_`).
 
 ```sh
 npm ci

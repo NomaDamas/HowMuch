@@ -8,7 +8,7 @@ HowMuch is distributed under AGPL-3.0-or-later. AGPL governs the HowMuch source 
 | --- | --- | --- |
 | HowMuch UI, API, adapters | This repository, AGPL-3.0-or-later | Preserve notices, provide corresponding source for network use, publish modifications under AGPL terms |
 | Commercial VLM | Model provider | Keep keys server-side; comply with retention, regional processing, output and branding terms |
-| Browser agent (Browser Use/Playwright) | Upstream project plus target site terms | Pin/version dependencies; automate only permitted flows; do not defeat CAPTCHA, rate limits, login controls, or robots/terms restrictions |
+| Research agents (provider-hosted web search) | Model provider terms | Search runs through the provider's hosted tool; the product never scrapes shops or search engines |
 | Crawl/extraction (Crawl4AI/Firecrawl/SearXNG) | Upstream project plus each target site | Use only pages and endpoints whose terms permit access; retain provenance and timestamps |
 | Search/merchant data | Merchant/search provider | Follow API quotas, attribution, affiliate requirements, price display rules, and caching limits |
 | Images and screenshots | Copyright holder/provider | Store only when permitted; link to original; avoid redistributing protected media |
@@ -19,7 +19,7 @@ HowMuch is distributed under AGPL-3.0-or-later. AGPL governs the HowMuch source 
 
 The npm package versions and SPDX identifiers below come from the installed manifests and can be checked against `package-lock.json`. Retain each package's full license and any NOTICE files when redistributing its code.
 
-- Browser worker: [Playwright](https://github.com/microsoft/playwright) 1.65.1 (Apache-2.0). Chromium's bundled notices are separate.
+- Test runner only: [Playwright](https://github.com/microsoft/playwright) (Apache-2.0) drives the browser smoke tests; it is not shipped or used by the product.
 - Camera UI: React and React DOM 19.3.1 (MIT), lucide-react 1.77.0 (ISC; also retain upstream icon notices), qrcode 1.5.4 (MIT).
 - Build: Vite 8.3.8 and @vitejs/plugin-react 6.3.0 (MIT).
 - Segmentation: [SAM 2 pinned source](https://github.com/facebookresearch/sam2/tree/2b90b9f5ceec907a1c18123530e92e794ad901a4) and the [SAM 2.1 tiny checkpoint/model card](https://huggingface.co/facebook/sam2.1-hiera-tiny/tree/de431c4043854a71d8101e17995dfe596bf101a5) (Apache-2.0). The setup script verifies the checkpoint SHA-256; additional Python/library notices are required when shipping that environment.
