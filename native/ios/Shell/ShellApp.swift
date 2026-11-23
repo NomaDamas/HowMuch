@@ -39,7 +39,7 @@ final class ShellController: UIViewController, WKNavigationDelegate, WKUIDelegat
         view.addSubview(web); load()
     }
     override func viewDidAppear(_ animated: Bool) { super.viewDidAppear(animated); becomeFirstResponder() }
-    private func load() { web.load(URLRequest(url: serverURL, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 15)) }
+    private func load() { NSLog("HowMuch loading %@", serverURL.absoluteString); web.load(URLRequest(url: serverURL, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 15)) }
 
     // Shake the phone to change the server address.
     override func motionEnded(_ motion: UIEvent.EventSubtype, with event: UIEvent?) { if motion == .motionShake { askServer(error: nil) } }
@@ -66,7 +66,8 @@ final class ShellController: UIViewController, WKNavigationDelegate, WKUIDelegat
             completionHandler(.useCredential, URLCredential(trust: trust))
         } else { completionHandler(.performDefaultHandling, nil) }
     }
-    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) { askServer(error: error.localizedDescription) }
+    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) { NSLog("HowMuch load failed: %@", error.localizedDescription); askServer(error: error.localizedDescription) }
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) { NSLog("HowMuch loaded %@", webView.url?.absoluteString ?? "") }
     // Source links open in the system browser.
     func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration, for action: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
         if let u = action.request.url { UIApplication.shared.open(u) }

@@ -60,18 +60,18 @@
     }
   },
   {
-    "name": "다이슨 에어랩 코안다2x 멀티 스타일러 앤 드라이어 (레드벨벳/골드)",
-    "query": "다이슨 에어랩",
-    "source": "https://prod.danawa.com/info/?pcode=107989169",
-    "image": "eval/images/5.jpg",
-    "observedLowPrice": 1407540,
+    "name": "다이슨 슈퍼소닉 뉴럴 (빈카블루/토파즈)",
+    "query": "다이슨 슈퍼소닉 헤어드라이어",
+    "source": "https://prod.danawa.com/info/?pcode=42166253",
+    "image": "eval/images/5_a.jpg",
+    "observedLowPrice": 387890,
     "expect": {
       "modelAny": [
-        "airwrap",
-        "에어랩"
+        "supersonic",
+        "슈퍼소닉"
       ],
-      "minPrice": 844524,
-      "maxPrice": 2252064
+      "minPrice": 232734,
+      "maxPrice": 620624
     }
   },
   {
@@ -210,6 +210,17 @@
       ],
       "minPrice": 229620,
       "maxPrice": 612320
+    }
+  },
+  {
+    "name": "감자 (농산물 · 시장 시세)",
+    "query": "potato photo",
+    "source": "unsplash (own test photo)",
+    "image": "eval/images/p_photo-1518977676601-b53f82aba655.jpg",
+    "expect": {
+      "commodity": true,
+      "minPrice": 1500,
+      "maxPrice": 9000
     }
   }
 ]

@@ -23,7 +23,8 @@ const work = async c => {
     const e = c.expect || {};
     const any = e.modelAny || (e.modelIncludes ? [e.modelIncludes] : []);
     const modelOk = !any.length || any.some(w => model.toLowerCase().includes(w.toLowerCase()));
-    const priceOk = e.commodity ? r.pricingMode === 'market_unit' : lowest != null && (e.minPrice == null || lowest >= e.minPrice) && (e.maxPrice == null || lowest <= e.maxPrice);
+    const inBand = lowest != null && (e.minPrice == null || lowest >= e.minPrice) && (e.maxPrice == null || lowest <= e.maxPrice);
+    const priceOk = e.commodity ? r.pricingMode === 'market_unit' && inBand : lowest != null && (e.minPrice == null || lowest >= e.minPrice) && (e.maxPrice == null || lowest <= e.maxPrice);
     verdict = modelOk && priceOk ? 'HIT' : 'MISS'; if (verdict === 'HIT') hits++;
   } catch (e) { detail = String(e.message || e); }
   rows.push({ name: c.name, verdict, seconds: ((performance.now() - started) / 1000).toFixed(1), detail });
