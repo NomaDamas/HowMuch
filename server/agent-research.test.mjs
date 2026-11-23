@@ -85,3 +85,14 @@ test('two agreeing agents settle early and the slow third is cancelled', async (
   const r = await agentResearch(body, { agents: 3, graceMs: 60000, runAgent: (f, i, o) => runs[n++](f, i, o) });
   assert.equal(r.status, 'complete'); assert.ok(Date.now() - t < 2000); assert.equal(cancelled, true);
 });
+
+test('differently worded identities for the same product are clustered and their names merged', () => {
+  const id = consensusIdentity([
+    { identity: ident({ model: 'Nintendo Switch (OLED model) White', modelAliases: ['스위치 OLED'] }) },
+    { identity: ident({ model: 'Nintendo Switch – OLED Model White set', modelAliases: [] }) },
+    { identity: ident({ model: 'Nintendo Switch OLED Model White set', modelAliases: ['닌텐도 스위치 OLED 화이트'] }) },
+    { identity: ident({ model: 'Switch Lite', modelAliases: [] }) }
+  ]);
+  assert.equal(id.votes, 3);
+  assert.ok(id.modelAliases.includes('닌텐도 스위치 OLED 화이트')); assert.ok(!id.modelAliases.some(a => /lite/i.test(a)));
+});

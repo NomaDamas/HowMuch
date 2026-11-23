@@ -32,3 +32,14 @@ test('model alias matching tolerates generic descriptors like Low/Model/로우',
   assert.equal(modelMatches({ title: '나이키 덩크 로우 DD1391' }, id), false);
   assert.equal(modelMatches({ title: '아디다스 에어포스 1' }, id), false);
 });
+
+test('trailing set/세트 and trademark signs do not block a model match', () => {
+  const id = { brand: 'Nintendo', model: 'Nintendo Switch – OLED Model White set', brandAliases: ['닌텐도'], modelAliases: [] };
+  assert.equal(modelMatches({ title: 'Nintendo Switch™ - OLED Model White' }, id), true);
+  assert.equal(modelMatches({ title: 'Nintendo Switch Lite Turquoise' }, id), false);
+});
+
+test('low-top sneakers are footwear, not apparel "tops"; real apparel still needs a label', () => {
+  assert.ok(inferredProof({ brand: 'Nike', model: "Air Force 1 '07", confidence: .95, category: 'low-top sneakers', name: 'Nike Air Force 1 07 Low' }));
+  assert.equal(inferredProof({ brand: 'Uniqlo', model: 'Supima tee', confidence: .95, category: 't-shirt', name: 'Uniqlo Supima tee' }), null);
+});

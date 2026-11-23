@@ -70,20 +70,30 @@ export async function runAgent(focus, images, { signal, env = process.env, fetch
   return out && { ...out, cited, hadCitations: cited.size > 0 };
 }
 
-const normKey = (b, m) => (b + ' ' + m).toLowerCase().replace(/[^\p{L}\d]+/gu, '');
+const squash = v => String(v || '').normalize('NFKC').toLowerCase().replace(/[^\p{L}\d]+/gu, ' ').trim();
+const GENERIC = new Set(['set', 'model', 'version', 'edition', 'low', 'high', 'mid', 'white', 'black', 'blue', 'red', 'gray', 'grey', 'silver', 'gold', 'pink', 'green', '로우', '하이', '모델', '세트', '화이트', '블랙']);
+const modelTokens = v => new Set(squash(v).split(' ').filter(t => t && !GENERIC.has(t)));
+const jaccard = (a, b) => { const i = [...a].filter(x => b.has(x)).length, u = new Set([...a, ...b]).size; return u ? i / u : 0; };
+const sameBrand = (a, b) => { const k = v => squash(v).replace(/ /g, ''); const names = x => [x.brand, ...x.brandAliases].map(k).filter(Boolean); const A = names(a), B = names(b); return A.some(x => B.includes(x)); };
 
-/** Vote on identity: most agents naming the same brand+model wins; ties go to higher stated confidence. */
+/** Agents name the same product slightly differently ("Switch (OLED model) White" vs "Switch OLED Model White set").
+ *  Cluster identities by brand + model-token overlap, vote by cluster size, and merge the cluster's names as aliases. */
 export function consensusIdentity(results) {
-  const groups = new Map();
-  for (const r of results) {
-    const id = r.identity; if (!id.brand || !id.model) continue;
-    const k = normKey(id.brand, id.model), g = groups.get(k) || { votes: 0, conf: 0, id, brandAliases: new Set(), modelAliases: new Set(), evidence: new Set() };
-    g.votes++; g.conf = Math.max(g.conf, Number.isFinite(id.confidence) ? id.confidence : 0);
-    id.brandAliases.forEach(a => g.brandAliases.add(a)); id.modelAliases.forEach(a => g.modelAliases.add(a)); id.evidence.forEach(e => g.evidence.add(e));
-    groups.set(k, g);
+  const ids = results.map(r => r.identity).filter(i => i.brand && i.model);
+  const clusters = [];
+  for (const id of ids) {
+    const t = modelTokens(id.model), c = clusters.find(c => sameBrand(c.members[0], id) && jaccard(c.tokens, t) >= .5);
+    if (c) c.members.push(id); else clusters.push({ members: [id], tokens: t });
   }
-  const best = [...groups.values()].sort((a, b) => b.votes - a.votes || b.conf - a.conf)[0];
-  return best && { ...best.id, confidence: best.conf, votes: best.votes, brandAliases: [...best.brandAliases].slice(0, 6), modelAliases: [...best.modelAliases].slice(0, 6), evidence: [...best.evidence].slice(0, 4) };
+  const best = clusters.sort((a, b) => b.members.length - a.members.length || Math.max(...b.members.map(m => m.confidence || 0)) - Math.max(...a.members.map(m => m.confidence || 0)))[0];
+  if (!best) return null;
+  // representative: the member whose model overlaps the others most (the shared core name)
+  const rep = [...best.members].sort((x, y) => best.members.reduce((n, m) => n + jaccard(modelTokens(y.model), modelTokens(m.model)), 0) - best.members.reduce((n, m) => n + jaccard(modelTokens(x.model), modelTokens(m.model)), 0))[0];
+  const uniq = xs => [...new Set(xs.filter(Boolean))];
+  return { ...rep, confidence: Math.max(...best.members.map(m => Number.isFinite(m.confidence) ? m.confidence : 0)), votes: best.members.length,
+    brandAliases: uniq(best.members.flatMap(m => [m.brand, ...m.brandAliases])).slice(0, 12),
+    modelAliases: uniq(best.members.flatMap(m => [m.model, ...m.modelAliases])).filter(x => x !== rep.model).slice(0, 12),
+    evidence: uniq(best.members.flatMap(m => m.evidence)).slice(0, 4) };
 }
 
 export async function agentResearch(body, deps = {}) {
@@ -114,6 +124,7 @@ export async function agentResearch(body, deps = {}) {
   return assemble();
 
   async function assemble() {
+    if (process.env.HOWMUCH_DEBUG) console.error('[agents]', JSON.stringify(results.map(r => ({ kind: r.kind, brand: r.identity.brand, model: r.identity.model, conf: r.identity.confidence, offers: r.offers.map(o => [hostOf(o.url), o.price, o.title.slice(0, 28)]) }))));
   const tools = ['agent_web_search', 'compare_offers'];
   const done = (extra = {}) => ({ status: 'no_result', candidates: [], offers: [], tools, startedAt, completedAt: new Date().toISOString(), agents: { asked: agents, answered: results.length }, ...extra });
 
@@ -128,6 +139,7 @@ export async function agentResearch(body, deps = {}) {
 
   const plan = { name, brand: id.brand, model: id.model, category: id.category, confidence: id.confidence, modelAliases: id.modelAliases, brandAliases: id.brandAliases };
   const strict = needsModel(plan), proof = inferredProof(plan);
+  if (process.env.HOWMUCH_DEBUG) console.error('[gate]', JSON.stringify({ strict, proof: !!proof, category: id.category, name, conf: id.confidence }));
   if (strict && !proof) return done({ candidates, status: 'followup_required', pricingMode: 'exact_model', followup: requestLabel() });
 
   // Offers: URL must be one the search tool cited (no invented links) and the title must match the agreed model.
@@ -145,13 +157,14 @@ export async function agentResearch(body, deps = {}) {
   }
   // 'unknown' condition is treated as new only when no title says used (agents were told to prefer new items).
   let rows = [...seen.values()].map(({ row }) => ({ ...row, condition: row.condition === 'unknown' ? 'new' : row.condition }));
+  if (process.env.HOWMUCH_DEBUG) console.error('[stages]', JSON.stringify({ rawOffers: results.reduce((n, r) => n + r.offers.length, 0), afterFilters: rows.length, id: { brand: id.brand, model: id.model, votes: id.votes, aliases: id.modelAliases.length }, strict, inferred: !!proof, conf: id.confidence }));
   // One agent alone is not trusted: the hosted tool returns no citations through this proxy, so agreement is the check.
-  // A price counts when at least two independent agents found the same price level (within 12%) for the agreed model.
-  for (const r of rows) r.agreedBy = new Set(rows.filter(x => x.currency === r.currency && Math.abs(x.price / r.price - 1) <= .12).map(x => x.agentIndex)).size;
+  // A price counts when at least two independent agents found the same price level (within 20%) for the agreed model.
+  for (const r of rows) r.agreedBy = new Set(rows.filter(x => x.currency === r.currency && Math.abs(x.price / r.price - 1) <= .2).map(x => x.agentIndex)).size;
   const supported = rows.filter(r => r.agreedBy >= 2);
   if (proof && !supported.length) return done({ candidates, status: 'followup_required', pricingMode: 'exact_model', followup: requestLabel() });
   if (supported.length) rows = supported;
-  for (const r of rows) r.evidence.push(`Agreed by ${r.agreedBy} independent search agents (within 12%)`);
+  for (const r of rows) r.evidence.push(`Agreed by ${r.agreedBy} independent search agents (within 20%)`);
   if (!rows.length) return done({ candidates });
   const market = await finalizeMarket(rows, process.env.HOWMUCH_CURRENCY || 'KRW');
   const identity = (strict || proof) ? { ...proof, modelAliases: id.modelAliases, brandAliases: id.brandAliases } : undefined;
