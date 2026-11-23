@@ -56,7 +56,7 @@ export function parseAgentOutput(text) {
 export async function runAgent(focus, images, { signal, env = process.env, fetchImpl = fetch, timeoutMs } = {}) {
   const key = env.VLM_API_KEY || env.OPENAI_API_KEY, base = env.VLM_BASE_URL || env.OPENAI_BASE_URL, model = env.VLM_MODEL || env.OPENAI_VLM_MODEL;
   if (!key || !base || !model) throw Error('vlm_configuration_missing');
-  const limit = AbortSignal.timeout(timeoutMs ?? Number(env.HOWMUCH_AGENT_TIMEOUT_MS || 90000)), combined = signal ? AbortSignal.any([signal, limit]) : limit;
+  const limit = AbortSignal.timeout(timeoutMs ?? Number(env.HOWMUCH_AGENT_TIMEOUT_MS || 140000)), combined = signal ? AbortSignal.any([signal, limit]) : limit;
   const content = [{ type: 'input_text', text: buildAgentPrompt(focus) }, ...images.map(u => ({ type: 'input_image', image_url: u }))];
   const res = await fetchImpl(base.replace(/\/$/, '') + '/responses', { method: 'POST', signal: combined, headers: { authorization: 'Bearer ' + key, 'content-type': 'application/json' },
     body: JSON.stringify({ model, input: [{ role: 'user', content }], tools: [{ type: 'web_search' }], tool_choice: 'auto' }) });
@@ -96,12 +96,24 @@ export async function agentResearch(body, deps = {}) {
   const agents = Number(deps.agents ?? process.env.HOWMUCH_AGENTS ?? FOCI.length), grace = Number(deps.graceMs ?? process.env.HOWMUCH_AGENT_GRACE_MS ?? 25000);
   const call = deps.runAgent || runAgent;
 
-  // Parallel agents. After the first finishes, the others get a short grace period; slow stragglers are dropped.
   deps.onPhase?.({ phase: 'researching' });
   const results = [];
-  const jobs = FOCI.slice(0, agents).map(focus => call(focus, images, { signal, env: deps.env, fetchImpl: deps.fetchImpl }).then(r => { if (r) results.push(r); }, () => {}));
-  await Promise.race([Promise.all(jobs), new Promise(res => { let t; const arm = () => { if (!t && results.length) t = setTimeout(res, grace); }; jobs.forEach(j => j.then(arm)); })]);
+  const ac = new AbortController(), sig = signal ? AbortSignal.any([signal, ac.signal]) : ac.signal;
+  let settled = null, resolveEarly; const earlyP = new Promise(res => { resolveEarly = res; });
+  // Parallel agents. As soon as two of them already give a complete, agreed answer the rest are cancelled (speed);
+  // otherwise, after the first answer the others get a short grace period and stragglers are dropped.
+  const jobs = FOCI.slice(0, agents).map(focus => call(focus, images, { signal: sig, env: deps.env, fetchImpl: deps.fetchImpl }).then(async r => {
+    if (!r) return; results.push(r);
+    if (!settled && results.length >= 2) { const t = await assemble(); if (!settled && t.status === 'complete') { settled = t; ac.abort(); resolveEarly(t); } }
+  }, () => {}));
+  const graceP = new Promise(res => { let t; const arm = () => { if (!t && results.length) t = setTimeout(() => res(null), grace); }; jobs.forEach(j => j.then(arm)); });
+  const early = await Promise.race([earlyP, Promise.all(jobs).then(() => null), graceP]);
   signal?.throwIfAborted();
+  if (early) return early;
+  ac.abort();
+  return assemble();
+
+  async function assemble() {
   const tools = ['agent_web_search', 'compare_offers'];
   const done = (extra = {}) => ({ status: 'no_result', candidates: [], offers: [], tools, startedAt, completedAt: new Date().toISOString(), agents: { asked: agents, answered: results.length }, ...extra });
 
@@ -146,4 +158,5 @@ export async function agentResearch(body, deps = {}) {
   const final = { status: market.lowest ? 'complete' : market.offers.length ? 'partial' : 'no_result', candidates, ...(identity && { identity, pricingMode: 'exact_model' }), ...market, tools, startedAt, completedAt: new Date().toISOString(), agents: { asked: agents, answered: results.length } };
   if (process.env.HOWMUCH_DEBUG && !isValidResearchResult({ ...final })) console.error('[invalid result]', JSON.stringify({ cand: final.candidates, id: final.identity, pm: final.pricingMode, offers: final.offers.map(o => ({ t: o.title, u: o.url, p: o.price, c: o.currency, k: o.condition, e: o.evidence, cf: o.confidence })) }).slice(0, 1800));
   return final;
+  }
 }

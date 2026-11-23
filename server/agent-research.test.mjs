@@ -74,3 +74,14 @@ test('runAgent sends both images with the hosted web_search tool and collects ci
   assert.equal(sent.body.input[0].content.filter(c => c.type === 'input_image').length, 2);
   assert.equal(r.cited.size, 2);
 });
+
+test('two agreeing agents settle early and the slow third is cancelled', async () => {
+  let cancelled = false;
+  const fast = agent([offer('https://shop-a.co.kr/p/1', 446310)]);
+  const fast2 = agent([offer('https://shop-b.co.kr/p/2', 450000)]);
+  const slow = (f, i, o) => new Promise((_, rej) => o.signal.addEventListener('abort', () => { cancelled = true; rej(Error('aborted')); }, { once: true }));
+  const runs = [fast, fast2, slow]; let n = 0;
+  const t = Date.now();
+  const r = await agentResearch(body, { agents: 3, graceMs: 60000, runAgent: (f, i, o) => runs[n++](f, i, o) });
+  assert.equal(r.status, 'complete'); assert.ok(Date.now() - t < 2000); assert.equal(cancelled, true);
+});
