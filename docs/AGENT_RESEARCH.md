@@ -1,3 +1,35 @@
+# Research architecture (current): agent-only, server-side, phone-safe
+
+**Default path = `server/agent-research.mjs`.** No page crawling, no search-engine scraping, no browser, no CLI subprocess.
+
+```
+phone / app / desktop --POST /api/jobs--> server (202 + jobId at once)        <- phone may go to background
+                                           |- research agent 1: domestic shops
+                                           |- research agent 2: price-comparison sites     (parallel)
+                                           '- research agent 3: official / overseas stores
+                                          each = commercial multimodal model + provider-hosted `web_search` tool,
+                                          cut-out and scene images attached (the Codex / Aside harness mechanism:
+                                          an objective plus several varied keyword queries, no site: operators)
+                                           |
+                                    merge: identity clustering and vote (aliases merged), model-title match,
+                                    price agreement (>= 2 independent agents within 20%), early return when two agree
+                                           v
+phone <--GET /api/jobs/:id (poll; resumable after background)-- result with evidence, or a follow-up request
+```
+
+* **Why no crawling:** sites ban scrapers. Search runs through the model provider's hosted search, the same way Claude Code, Codex and Aside search.
+* **Citations:** the proxy used in development returns none, so a price is shown only when independent agents agree; one agent alone is never trusted.
+* **Guards kept:** a lone price without a visible label is held back (`followup_required`), apparel/eyewear need a label, and wrong-model titles are dropped.
+* **Phones:** the app only submits a job and polls (`HttpResearchProvider.pollJob`); the server keeps working while the app is suspended. Android, iOS and desktop use the same API. App shells identify with `HowMuchApp` in the user agent to select this transport.
+* **Legacy:** `HOWMUCH_RESEARCH=legacy` keeps the previous Playwright pipeline (it also holds the KAMIS produce market). It is deprecated and only exists for fixtures and produce.
+* **Aside analysis (static):** the `websearch` tool calls a hosted backend `/search` with `objective` + `search_queries[]`; `webfetch` reads pages directly (5 MB cap); answers cite `source_id`s. The CAPTCHA-solver skill is deliberately not copied.
+
+Measured on the 14-case Danawa-sourced set (catalogue photos, price band 60-160 %, one run, noisy): 0/14 -> 7/14 (50 %). Known failures: sibling-generation products (Watch, AirPods), poorly recognisable products, and parallel-import vs retail price differences.
+
+---
+
+# Earlier design notes (superseded)
+
 # Multimodal research-agent contract
 
 The browser MVP treats research as one agent run with two concurrent branches. The image branch finds visually similar products and the text branch searches the VLM-generated product queries. Both branches return evidence; the reducer only displays prices that have a source URL, checked timestamp, merchant, condition, and extracted price.
