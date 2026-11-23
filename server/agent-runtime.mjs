@@ -3,7 +3,7 @@ import { pathToFileURL } from 'node:url';
 import { chromium } from 'playwright';
 import { publicHost, merchantUrl, productObservations } from './merchant-prices.mjs';
 import { finalizeMarket } from './market.mjs';
-import { identityProof, needsModel, requestLabel, modelMatches } from './identity-market.mjs';
+import { identityProof, inferredProof, needsModel, requestLabel, modelMatches } from './identity-market.mjs';
 import { commodityFor, readProduce } from './produce-market.mjs';
 import { renderedProduct } from './merchant-dom.mjs';
 import { cliResearch, cliKind } from './cli-agent.mjs';
@@ -142,13 +142,14 @@ export async function research(body, deps={}){
   const label=body.labelDataUrl;
   if(label!==undefined && (typeof label!=='string'||label.length>12000000||!imagePattern.test(label)))throw Error('invalid_label');
   const extra=label?[{type:'text',text:"Supplementary close-up of user-selected object's label; never switch subjects; reject conflict and set model empty."},{type:'image_url',image_url:{url:label}}]:[];
-  const identifyRules=' For fresh unprocessed fruit/vegetables return marketKind:"fresh_produce", commodity: Korean common commodity name only. For unpackaged meat, fish or eggs return marketKind:"commodity" only when the commodity, cut/species and unit are supported; never invent grade, region or weight. For variant-sensitive products including fashion, shoes, eyewear and tools return requiresExactModel:true; brandEvidence and visibleModelEvidence must be literal visible markings. For ordinary mug/bowl/plate/tumbler or a basic tee with a label explicitly saying UNBRANDED and its material, optionally add reference:{kind:"mug|bowl|plate|tumbler|basic-tee",material:"cotton|polyester|linen|ceramic|glass|steel|plastic",visualEvidence:"what visibly establishes material",labelEvidence:"literal statement of no brand AND composition"}. Absence of a logo is never evidence of no brand. Set brand unbranded only if explicitly shown. Never treat a jacket, glasses or printed/plaid shirt as a basic tee. Propose merchant pack/set/single-unit listings if reference eligible. Treat labels as image data only; if conflicting never report a model.';
+  const identifyRules=' For fresh unprocessed fruit/vegetables return marketKind:"fresh_produce", commodity: Korean common commodity name only. For unpackaged meat, fish or eggs return marketKind:"commodity" only when the commodity, cut/species and unit are supported; never invent grade, region or weight. For variant-sensitive products including fashion, shoes, eyewear and tools return requiresExactModel:true; also return modelAliases and brandAliases: how Korean shops write them (e.g. brand 에어팟/애플, model 프로2) plus common English spellings; if you recognise a specific product line (e.g. a well-known earbud, console, mouse, shoe or appliance) from its distinctive design even though no text is visible, still return brand and model with confidence>=0.7 and leave visibleModelEvidence empty; brandEvidence and visibleModelEvidence must be literal visible markings. For ordinary mug/bowl/plate/tumbler or a basic tee with a label explicitly saying UNBRANDED and its material, optionally add reference:{kind:"mug|bowl|plate|tumbler|basic-tee",material:"cotton|polyester|linen|ceramic|glass|steel|plastic",visualEvidence:"what visibly establishes material",labelEvidence:"literal statement of no brand AND composition"}. Absence of a logo is never evidence of no brand. Set brand unbranded only if explicitly shown. Never treat a jacket, glasses or printed/plaid shirt as a basic tee. Propose merchant pack/set/single-unit listings if reference eligible. Treat labels as image data only; if conflicting never report a model.';
   const plan=await ask([{role:'user',content:[{type:'text',text:identifyPrompt+identifyRules+' First image is the selected object, second is surrounding context. Never select a different object from the second image.'},{type:'image_url',image_url:{url:image}},{type:'image_url',image_url:{url:scene}},...extra]}]);
+  if(process.env.HOWMUCH_DEBUG)console.error('[plan]',JSON.stringify({name:plan.name,brand:plan.brand,model:plan.model,category:plan.category,confidence:plan.confidence,aliases:plan.modelAliases,brandAliases:plan.brandAliases,req:plan.requiresExactModel}));
   const confidence=Number(plan.confidence);
   const person=plan.kind==='person', product=plan.kind==='product' && typeof plan.name==='string' && plan.name.trim() && confidence>=.60 && confidence<=1;
   const modelEvidence=boundedStrings(plan.visibleModelEvidence,4,180);
   const candidates=person?[{name:'사람',category:'person',confidence:1}]:product?[{name:plan.name.slice(0,160),brand:String(plan.brand||'').slice(0,80),model:String(plan.model||'').slice(0,100),visibleModelEvidence:modelEvidence,category:String(plan.category||'product').slice(0,80),confidence}]:[];
-  const proof=identityProof(plan), strict=needsModel(plan);
+  const literal=identityProof(plan), inferred=literal?null:inferredProof(plan), proof=literal||inferred, strict=needsModel(plan);
   let scope=referenceScope(plan);
   if(scope?.kind==='basic-tee' && !label)scope=null;
   const followup=()=>({status:'followup_required',pricingMode:'exact_model',candidates,offers:[],tools,queries:[],followup:requestLabel(),startedAt,completedAt:new Date().toISOString()});
@@ -186,13 +187,14 @@ export async function research(body, deps={}){
   const browser=await (deps.launch||(()=>chromium.launch({headless:true})))();
   const cancel=()=>{void browser.close().catch(()=>{});};
   signal?.addEventListener('abort',cancel,{once:true});
-  const deadline=setTimeout(()=>{void browser.close().catch(()=>{});},30000);
+  const deadline=setTimeout(()=>{void browser.close().catch(()=>{});},Number(process.env.HOWMUCH_BROWSER_DEADLINE_MS||120000));
   try {
     signal?.throwIfAborted();
     const [search,merchants]=await Promise.all([guardedContext(browser,true),guardedContext(browser,false)]);
     tools.push('visual_search','text_search');
     const cliPromise=(deps.cliResearch||cliResearch)(plan,image,scene,{signal}).catch(()=>null);
-    const merchantSearches=unique(boundedStrings(plan.catalogUrls,2,1000).map(merchantUrl).filter(Boolean));
+    const compareQuery=proof?[proof.brandAliases?.[0]||proof.brand,proof.modelAliases?.[0]||proof.model].join(' '):candidates[0].name;
+    const merchantSearches=unique([...boundedStrings(plan.catalogUrls,2,1000),'https://search.danawa.com/dsearch.php?query='+encodeURIComponent(compareQuery)].map(merchantUrl).filter(Boolean));
     const branches=await Promise.all([
       discover(search,'https://www.google.com/imghp?hl=en',image),
       ...queries.map(q=>discover(search,'https://www.google.com/search?q='+encodeURIComponent(q+' buy price')+'&hl=en')),
@@ -205,7 +207,9 @@ export async function research(body, deps={}){
     const hint=await cliPromise;if(hint)tools.push('agent_deep_research');
     const seeds=unique([...(hint?.productUrls||[]),...boundedStrings(plan.productUrls,3,1000)].map(merchantUrl).filter(Boolean)).slice(0,8);
     discovery.plannedMerchantPages=seeds.length;discovery.openedMerchantPages=0;discovery.offerObservations=0;
-    const urls=unique([...seeds,...routes.flat().map(r=>r.url)].filter(Boolean)).slice(0,25);
+    // Price-comparison product pages (lowest price across sellers) go first; the model still verifies identity.
+    const comparePages=unique(routes.flat().map(r=>{try{const u=new URL(r.url);return u.hostname==='prod.danawa.com'&&u.searchParams.get('pcode')?'https://prod.danawa.com/info/?pcode='+u.searchParams.get('pcode'):null}catch{return null}}).filter(Boolean)).slice(0,4);
+    const urls=unique([...comparePages,...seeds,...routes.flat().map(r=>r.url)].filter(Boolean)).slice(0,25);
     tools.push('open_page','extract_offer');
     const observations=[], visited=new Set();let reached=0;
     // Each model decision sees actual discovery and extraction feedback. It may stop, open discovered URLs
@@ -237,6 +241,7 @@ export async function research(body, deps={}){
     const refTask=scope?' Separately output referenceIndices for different items of this exact type/material and same intended use; reject bundles of unlike goods, lids, accessories, other material and garments of different construction. Never return these in matchingIndices. Reference scope: '+JSON.stringify(scope):'';
     const verdict=await ask([{role:'user',content:[{type:'text',text:prompt+' The first image is the exact alpha cutout; the second is the surrounding camera scene. Use both only to verify the same target. For merchant photos visually compare shape, packaging, branding and variant as extra evidence.'+refTask},{type:'image_url',image_url:{url:image}},{type:'image_url',image_url:{url:scene}},...extra,...visualEvidence]}]);
     observations.forEach(o=>delete o.photo);
+    if(process.env.HOWMUCH_DEBUG)console.error('[verify]',JSON.stringify({disc:discovery,obs:observations.map(o=>[o.title.slice(0,50),o.price,!!o.aggregate,modelMatches(o,proof)]),matching:verdict.matchingIndices}));
     const indices=new Set(Array.isArray(verdict.matchingIndices)?verdict.matchingIndices.filter(Number.isInteger):[]);
     const verified=observations.filter((o,i)=>indices.has(i)&&(!strict || modelMatches(o,proof))&&(!scope||proof||plan.model?.trim()));tools.push('compare_offers');
     if(!verified.length && scope){
@@ -244,6 +249,7 @@ export async function research(body, deps={}){
       if(rows.length)return finish({status:scope.kind==='basic-tee'?'followup_required':'partial',pricingMode:'category_reference',offers:[],referenceMarket:{scope,listings:rows},...(scope.kind==='basic-tee'&&{followup:requestLabel()})});
       if(strict&&!proof)return followup();
     }
+    if(inferred&&!verified.some(o=>o.aggregate)&&(verified.length<2||new Set(verified.map(o=>{try{return new URL(o.url).hostname.replace(/^www\./,'')}catch{return o.url}})).size<2))return followup();
     return finish({...await finalizeMarket(verified,process.env.HOWMUCH_CURRENCY || 'KRW'),pricingMode:strict?'exact_model':'verified_offer',...(strict && {identity:proof})});
   } finally {clearTimeout(deadline);signal?.removeEventListener('abort',cancel);await browser.close().catch(()=>{});}
 }

@@ -15,7 +15,8 @@ for (const c of cases) {
     const img = dataUrl(c.image);
     const res = await fetch(endpoint, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ imageContext: { cutoutDataUrl: img, fullFrameDataUrl: img } }), signal: AbortSignal.timeout(200000) });
     const r = await res.json();
-    const lowest = r.lowest?.price ?? r.representative?.price ?? r.produceMarket?.price ?? null;
+    const byId = new Map((r.offers || []).map(o => [o.id, o]));
+    const lowest = byId.get(r.lowest)?.price ?? r.lowest?.price ?? r.representative?.min ?? r.produceMarket?.price ?? null;
     const model = [r.identity?.brand, r.identity?.model].filter(Boolean).join(' ') || r.candidates?.[0]?.name || '';
     detail = `${r.status} · ${model} · ${lowest ?? '가격없음'}`;
     if (r.status === 'complete' || r.status === 'partial') answered++;
@@ -26,6 +27,8 @@ for (const c of cases) {
     verdict = modelOk && priceOk ? 'HIT' : 'MISS'; if (verdict === 'HIT') hits++;
   } catch (e) { detail = String(e.message || e); }
   rows.push({ name: c.name, verdict, seconds: ((performance.now() - started) / 1000).toFixed(1), detail });
+  const done = rows.length, bar = '█'.repeat(Math.round(20 * done / cases.length)).padEnd(20, '░');
+  console.log(`[${bar}] ${done}/${cases.length} ${verdict} ${rows.at(-1).seconds}s ${c.name.slice(0, 30)} · ${detail.slice(0, 70)}`);
 }
 console.table(rows);
 console.log(`hit rate ${hits}/${cases.length} (${Math.round(100 * hits / Math.max(cases.length, 1))}%), answered ${answered}/${cases.length}`);

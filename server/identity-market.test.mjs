@@ -17,3 +17,11 @@ test('a Korean category and explicit label image cannot manufacture an exact pri
  assert.equal(assertResearchEnvelope(result).status,'followup_required');assert.equal(result.lowest,undefined);
  assert.throws(()=>assertResearchEnvelope({...result,comparables:[{}]}));
 });
+
+import { inferredProof } from './identity-market.mjs';
+test('inferred identity needs a specific brand+model with high confidence and excludes apparel', () => {
+  assert.equal(inferredProof({ brand: 'Nintendo', model: 'Switch OLED', confidence: .9, category: 'game console', name: 'Switch' }).inferred, true);
+  assert.equal(inferredProof({ brand: 'Nike', model: 'Air Force 1', confidence: .6 }), null);
+  assert.equal(inferredProof({ brand: 'Ray-Ban', model: 'Wayfarer RB2140', confidence: .9, category: 'sunglasses' }), null);
+  assert.equal(inferredProof({ brand: 'unknown', model: 'x100', confidence: .9 }), null);
+});
