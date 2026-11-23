@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+<key>CFBundleIdentifier</key><string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+<key>CFBundleName</key><string>HowMuch</string>
+<key>CFBundleDisplayName</key><string>HowMuch</string>
+<key>CFBundleExecutable</key><string>$(EXECUTABLE_NAME)</string>
+<key>CFBundlePackageType</key><string>APPL</string>
+<key>CFBundleVersion</key><string>1</string><key>CFBundleShortVersionString</key><string>1.0</string>
+<key>LSRequiresIPhoneOS</key><true/><key>UILaunchScreen</key><dict/>
+<key>UISupportedInterfaceOrientations</key><array><string>UIInterfaceOrientationPortrait</string></array>
+<key>NSCameraUsageDescription</key><string>카메라로 비춘 물체의 인터넷 시세를 찾기 위해 카메라를 사용합니다.</string>
+<key>NSMotionUsageDescription</key><string>고개를 돌려도 물체 위치를 기억하기 위해 모션 센서를 사용합니다.</string>
+<key>NSLocalNetworkUsageDescription</key><string>같은 Wi-Fi의 HowMuch 서버에 연결합니다.</string>
+<key>HowMuchDefaultURL</key><string>http://127.0.0.1:5173</string>
+<key>NSAppTransportSecurity</key><dict><key>NSAllowsLocalNetworking</key><true/><key>NSAllowsArbitraryLoadsInWebContent</key><true/></dict>
+<key>CFBundleURLTypes</key><array><dict><key>CFBundleURLName</key><string>org.nomadamas.howmuch</string><key>CFBundleURLSchemes</key><array><string>howmuch</string></array></dict></array>
+</dict></plist>
