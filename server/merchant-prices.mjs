@@ -23,13 +23,16 @@ export function productObservations(docs, pageUrl, checkedAt = new Date().toISOS
     if (Array.isArray(node)) return node.forEach(inspect);
     if (!node || typeof node!=='object') return;
     if (Array.isArray(node['@graph'])) inspect(node['@graph']);
+    if (Array.isArray(node.itemListElement)) inspect(node.itemListElement);
+    if (node.item && typeof node.item==='object') inspect(node.item);
     if (!array(node['@type']).includes('Product') || typeof node.name!=='string' || !node.name.trim()) return;
     for (const offer of array(node.offers)) {
       if (array(offer?.['@type']).includes('AggregateOffer')) {
         // Only price-comparison sites: their lowPrice is the lowest listed price across independent sellers.
-        const host = new URL(pageUrl).hostname, low = number(offer.lowPrice), count = Number(offer.offerCount);
+        const src = (typeof node.url==='string' && merchantUrl(node.url)) || pageUrl;
+        const host = new URL(src).hostname, low = number(offer.lowPrice), count = Number(offer.offerCount);
         if (!comparisonSites.some(h => host === h || host.endsWith('.' + h)) || !(low > 0) || !(count >= 2) || offer.priceCurrency !== 'KRW' || !Number.isInteger(low)) continue;
-        observations.push({title:node.name.slice(0,240),url:pageUrl,merchant:host,price:low,currency:'KRW',condition:'new',availability:'in_stock',shipping:undefined,checkedAt,aggregate:true,sellerCount:count,
+        observations.push({title:node.name.slice(0,240),url:src,merchant:host,price:low,currency:'KRW',condition:'new',availability:'in_stock',shipping:undefined,checkedAt,aggregate:true,sellerCount:count,
           evidence:[`Product: ${node.name}`,`AggregateOffer.lowPrice: ${low} KRW across ${count} sellers on a price-comparison site`,'Condition assumed new (comparison-site retail listing); shipping not confirmed'],confidence:.8,model:String(node.model || node.mpn || '').slice(0,100),sku:String(node.sku || '').slice(0,100),photo:(typeof array(node.image)[0]==='string'?array(node.image)[0]:undefined)});
         continue;
       }

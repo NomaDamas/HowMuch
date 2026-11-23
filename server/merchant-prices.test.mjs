@@ -27,3 +27,14 @@ test('rejects hostnames that resolve to private addresses', async () => {
   assert.equal(await publicHost('a.com', async () => [{ address: '93.184.216.34' }]), true);
   assert.equal(await publicHost('a.com', async () => { throw Error('x'); }), false);
 });
+
+test('reads per-product AggregateOffer nested in a comparison-site ItemList', () => {
+  const docs = [{ '@type': 'ItemList', itemListElement: [{ '@type': 'ListItem', item: { '@type': 'Product', name: 'Nintendo 스위치 OLED', url: 'https://price.enuri.com/catalog/74775910', offers: { '@type': 'AggregateOffer', priceCurrency: 'KRW', lowPrice: 446310, offerCount: 155 } } }] }];
+  const rows = productObservations(docs, 'https://www.enuri.com/search.jsp?keyword=x');
+  assert.equal(rows.length, 1); assert.equal(rows[0].price, 446310); assert.equal(rows[0].aggregate, true); assert.equal(rows[0].sellerCount, 155);
+  assert.equal(productObservations(docs, 'https://www.enuri.com/search.jsp?keyword=x').every(r => r.merchant === 'price.enuri.com'), true);
+});
+test('aggregate offers from a non comparison site are ignored', () => {
+  const docs = [{ '@type': 'Product', name: 'X', offers: { '@type': 'AggregateOffer', priceCurrency: 'KRW', lowPrice: 1000, offerCount: 5 } }];
+  assert.equal(productObservations(docs, 'https://some-shop.co.kr/p/1').length, 0);
+});

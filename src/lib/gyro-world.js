@@ -63,3 +63,11 @@ export function watchOrientation(callback, target = window) {
   target.addEventListener('deviceorientation', handler);
   return () => target.removeEventListener('deviceorientation', handler);
 }
+
+// Rotation-only anchors drift when the user walks, so confidence decays with time since the object was last seen:
+// the ring grows (position uncertainty), fades, then collapses to a plain "last seen here" tag.
+export function uncertainty(age) {
+  if (age < 6) return { scale: 1, opacity: 1, ring: true, note: '' };
+  if (age < 25) return { scale: 1 + (age - 6) / 19 * .9, opacity: 1 - (age - 6) / 19 * .45, ring: true, note: '위치 추정' };
+  return { scale: 1.9, opacity: .5, ring: false, note: '마지막으로 본 위치' };
+}

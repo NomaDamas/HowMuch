@@ -28,8 +28,13 @@ async function modelJson(messages, signal) {
 
 // Intercept and validate every URL, including navigation redirects. Service workers and popup downloads are disabled.
 // Browser-internal redirects are avoided by fulfilling only validated, single-hop responses.
+import { existsSync } from 'node:fs';
+// Real Chrome (not the bundled headless Chromium) plus an optional signed-in session saved by `npm run login:browser`.
+// This is the user's own browser identity, the way desktop agent browsers work; it is not CAPTCHA solving or evasion.
+export const launchOptions=()=>({headless:true,...(process.env.HOWMUCH_BROWSER_CHANNEL?{channel:process.env.HOWMUCH_BROWSER_CHANNEL}:{})});
+const sessionFile=()=>process.env.HOWMUCH_BROWSER_STATE||'.howmuch/browser-state.json';
 async function guardedContext(browser, discovery) {
-  const ctx=await browser.newContext({serviceWorkers:'block',acceptDownloads:false,javaScriptEnabled:discovery,locale:'en-US'});
+  const ctx=await browser.newContext({...(discovery&&existsSync(sessionFile())?{storageState:sessionFile()}:{}),serviceWorkers:'block',acceptDownloads:false,javaScriptEnabled:discovery,locale:'en-US'});
   const redirectCount=new WeakMap();
   await ctx.routeWebSocket('**/*',ws=>ws.close());
   await ctx.route('**/*',async route=>{
@@ -121,6 +126,7 @@ async function catalogPhoto(raw, signal) {
     const u=new URL(raw);
     const cdns=['cdn-shop.adafruit.com','m.media-amazon.com','i5.walmartimages.com','www.ikea.com','target.scene7.com'];
     if(u.protocol!=='https:' || u.username || u.password || u.port || !(merchantUrl(u.href)||cdns.includes(u.hostname)))return null;
+    if(!await publicHost(u.hostname))return null;
     const timeout=AbortSignal.timeout(3500);
     const r=await fetch(u,{redirect:'error',signal:signal?AbortSignal.any([signal,timeout]):timeout});
     const mime=(r.headers.get('content-type') || '').split(';')[0];
@@ -166,7 +172,7 @@ export async function research(body, deps={}){
     const side=async()=>{
       tools.push('visual_search','text_search');
       signal?.throwIfAborted();
-      const browser=await chromium.launch({headless:true});
+      const browser=await chromium.launch(launchOptions());
       const cancel=()=>{void browser.close().catch(()=>{});};
       signal?.addEventListener('abort',cancel,{once:true});
       try{
@@ -184,7 +190,7 @@ export async function research(body, deps={}){
     const market=retail.value;
     return finish({status:market?'complete':'no_result',pricingMode:'produce_market',offers:[],...(market && {produceMarket:market})});
   }
-  const browser=await (deps.launch||(()=>chromium.launch({headless:true})))();
+  const browser=await (deps.launch||(()=>chromium.launch(launchOptions())))();
   const cancel=()=>{void browser.close().catch(()=>{});};
   signal?.addEventListener('abort',cancel,{once:true});
   const deadline=setTimeout(()=>{void browser.close().catch(()=>{});},Number(process.env.HOWMUCH_BROWSER_DEADLINE_MS||120000));
@@ -194,7 +200,7 @@ export async function research(body, deps={}){
     tools.push('visual_search','text_search');
     const cliPromise=(deps.cliResearch||cliResearch)(plan,image,scene,{signal}).catch(()=>null);
     const compareQuery=proof?[proof.brandAliases?.[0]||proof.brand,proof.modelAliases?.[0]||proof.model].join(' '):candidates[0].name;
-    const merchantSearches=unique([...boundedStrings(plan.catalogUrls,2,1000),'https://search.danawa.com/dsearch.php?query='+encodeURIComponent(compareQuery)].map(merchantUrl).filter(Boolean));
+    const merchantSearches=unique([...boundedStrings(plan.catalogUrls,2,1000),'https://search.danawa.com/dsearch.php?query='+encodeURIComponent(compareQuery),'https://www.enuri.com/search.jsp?keyword='+encodeURIComponent(compareQuery)].map(merchantUrl).filter(Boolean));
     const branches=await Promise.all([
       discover(search,'https://www.google.com/imghp?hl=en',image),
       ...queries.map(q=>discover(search,'https://www.google.com/search?q='+encodeURIComponent(q+' buy price')+'&hl=en')),

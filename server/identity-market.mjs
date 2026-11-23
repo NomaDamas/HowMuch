@@ -35,7 +35,7 @@ export const requestLabel=()=>({reason:'exact_model_not_visible',prompt:'제품 
 export function inferredProof(plan){
   const brand=clean(plan?.brand),model=clean(plan?.model),conf=Number(plan?.confidence);
   const bad=/^(unknown|generic|unbranded|nobrand|nonbrand|none|null|unspecified|알수없음|미상|무지|무브랜드|노브랜드|없음)$/i;
-  if(!brand||!model||!(conf>=.7)||bad.test(norm(brand))||bad.test(norm(model))||norm(brand)===norm(model)||norm(model).length<3||/^\d{1,3}$/.test(model))return null;
+  if(!brand||!model||!(conf>=.85)||bad.test(norm(brand))||bad.test(norm(model))||norm(brand)===norm(model)||norm(model).length<3||/^\d{1,3}$/.test(model))return null;
   if(material.test([plan?.category,plan?.name].join(' '))||apparelAliases.test([plan?.category,plan?.name].join(' ')))return null; // apparel/eyewear still need a label
   return {brand,model,brandEvidence:['visual-search inferred: '+brand],modelEvidence:['visual-search inferred: '+model],inferred:true,modelAliases:aliasList(plan.modelAliases),brandAliases:aliasList(plan.brandAliases)};
 }
