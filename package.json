@@ -18,7 +18,8 @@
     "mcp": "node server/mcp.mjs",
     "smoke:pairing": "node scripts/pairing-browser.mjs",
     "smoke:world-anchor": "node scripts/world-anchor-browser.mjs",
-    "postinstall": "node scripts/postinstall-star.mjs"
+    "postinstall": "node scripts/postinstall-star.mjs",
+    "eval:prices": "node scripts/eval-prices.mjs eval/cases.json"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "latest",
