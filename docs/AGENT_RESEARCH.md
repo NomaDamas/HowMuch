@@ -65,3 +65,7 @@ The client assigns a monotonically increasing job id. When the camera target cha
 
 
 A recognized product with no successfully reached search/catalog or merchant page returns `research_unavailable`. A successful search that lacks a matching confirmed offer returns `no_result`. Clients can retry outages without presenting them as an empty market.
+
+## Agent deep-research backend (Claude Code / Codex)
+
+Set `HOWMUCH_AGENT_CLI=claude` or `codex` and the research run additionally launches that CLI headless (`server/cli-agent.mjs`) with its own web search/page tools, the cutout and the scene image. It runs in parallel with the Google Lens image upload and VLM text queries, searches visually and textually together, and returns only proposed product URLs and queries. Proposals are never trusted: every URL is opened by the guarded browser, structured offers are extracted and the VLM must verify identity against the cutout before any price is shown. There is no search-API fallback; if the CLI is missing or fails, the existing Playwright agent path continues and failure is explicit. API keys of other providers are stripped from the Codex child environment. Page reads are no longer limited to a curated shop list: any public `https` host is allowed (no IPs, localhost/internal TLDs, search/social hosts, cart/login paths); curated merchants only rank first. Aside/`rea` binary analysis was not performed in this change; the design follows the documented behaviour of Claude Code's WebSearch/WebFetch and Codex live web search.

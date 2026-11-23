@@ -20,7 +20,7 @@ Prices are normalized to the selected locale currency, include shipping when it 
 
 ## Privacy and people
 
-Frames are ephemeral by default. Anonymous telemetry contains mode, latency, outcome, category, and source clicks, never raw frames by default. Person mode is opt-in and playful: style metadata or a fictional game score only. It does not infer attractiveness, body value, body measurements, age, health, race, or other sensitive traits.
+Frames are ephemeral by default. Anonymous telemetry contains mode, latency, outcome, category, and source clicks, never raw frames by default. Person mode is playful, on by default and switchable off: a fictional mood-based price only. It does not infer attractiveness, body value, body measurements, age, health, race, or other sensitive traits.
 
 ## Agent and integration contract
 
@@ -57,3 +57,7 @@ The camera always keeps a compact investigation tray on screen. Each job remains
 > 오히려 농산물이나 이런것들은 오히려 시세를 인터넷 시세를 알거니깐 오히려 좋은데 그냥 안경 같은경우는 그냥 안경 혹은 그냥 점퍼 가격 검색으로 하는건 무의미해. 그 모델에 대한 가격조회까지 되어야 유의미하니깐.
 
 The automatic multi-object proposal model is a measured aid to segmentation only. SAM supplies the actual cutout and outlines. The commercial VLM uses the cutout, scene and optional same-item label to interpret identity; no generic eyewear/apparel price is used. Document produce reference units, region and observation dates explicitly. Distinguish ordinary screen-space contours, automatic object-relative 3D labels, and explicit stationary placement. The parent issue [#27](https://github.com/NomaDamas/HowMuch/issues/27) links the implementation gates and real-device follow-up.
+
+## Verbatim requirements and gap closure
+
+All approved user messages are preserved unmodified in [APPROVED_REQUIREMENTS.md](APPROVED_REQUIREMENTS.md). Person mode is a playful, mood-based fictional price (₩ 놀이 가격) shown by default and switchable off; it never evaluates looks or body. Real-device ARKit/ARCore validation remains deferred ([#31](https://github.com/NomaDamas/HowMuch/issues/31)).

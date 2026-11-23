@@ -5,6 +5,10 @@ import { merchantUrl, productObservations } from './merchant-prices.mjs';
 test('only curated public merchant product pages are accepted', () => {
   assert.equal(merchantUrl('https://www.adafruit.com/product/5812')?.includes('adafruit.com'), true);
   assert.equal(merchantUrl('https://example.test/item'), null);
+  assert.equal(merchantUrl('https://10.0.0.1/p/1'), null);
+  assert.equal(merchantUrl('https://localhost/p'), null);
+  assert.ok(merchantUrl('https://any-shop.co.kr/p/123'));
+  assert.equal(merchantUrl('https://www.google.com/search?q=x'), null);
   assert.equal(merchantUrl('https://www.adafruit.com/cart'), null);
 });
 

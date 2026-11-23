@@ -27,6 +27,8 @@ const canCapture=video=>!!(video?.videoWidth&&video.videoHeight&&video.readyStat
 const money=(n,c)=>Number.isFinite(n)&&c?new Intl.NumberFormat('ko-KR',{style:'currency',currency:c}).format(n):'가격 미확인';
 const clock=t=>t?new Date(t).toLocaleString('ko-KR'):'';
 const person=s=>/^(person|human|사람)$/i.test(String(s.kind||s.category||s.label||s.type||'').trim())||s.isPerson===true;
+function funPref(){try{return localStorage.getItem('howmuch-fun')!=='off'}catch{return true}}
+const vibes=['오늘의 코디 점수 만점','주인공 아우라','카페 사장님 룩','출근길 패셔니스타','주말 여행 모드','편안한 힙스터 감성'];
 function preferred(){try{return localStorage.getItem('howmuch-mode')==='draw'?'draw':'auto'}catch{return 'auto'}}
 function note(event){recordAnonymousEvent(event);try{
  const key='howmuch-usage-v1', day=new Date().toLocaleDateString('sv-SE'), prev=JSON.parse(localStorage.getItem(key)||'{}'), days=prev.days||{};
@@ -38,13 +40,13 @@ function App(){
  const [list,setList]=useState(false);
  const jobs=useRef(new Map()),epoch=useRef(0),sequence=useRef(0),gesture=useRef(null),fade=useRef(),hold=useRef(),since=useRef(0);
  const [items,redraw]=useState([]),[size,setSize]=useState({width:1,height:1}),[measured,setMeasured]=useState({}),[ready,setReady]=useState(false);
- const [mode,setMode]=useState(preferred),[cameraError,setCameraError]=useState(''),[hint,setHint]=useState(''),[settings,setSettings]=useState(false),[pair,setPair]=useState(false),[fun,setFun]=useState(false),[detail,setDetail]=useState(null);
+ const [mode,setMode]=useState(preferred),[cameraError,setCameraError]=useState(''),[hint,setHint]=useState(''),[settings,setSettings]=useState(false),[pair,setPair]=useState(false),[fun,setFun]=useState(funPref),[detail,setDetail]=useState(null);
 
  const spatial=useRef(false),captureRef=useRef(null),sheetRef=useRef(null);sheetRef.current=detail;
  const [captureId,setCaptureId]=useState(null);
- const funRef=useRef(false);
- const mint=()=>100+Math.floor(Math.random()*901);
- function enableFun(value){funRef.current=value;setFun(value);for(const o of jobs.current.values()){if(o.phase==='person')o.coins=value?(o.coins??mint()):null;}sync()}
+ const funRef=useRef(funPref());
+ const mint=()=>({price:(1+Math.floor(Math.random()*9999))*1000,vibe:vibes[Math.floor(Math.random()*vibes.length)]});
+ function enableFun(value){try{localStorage.setItem('howmuch-fun',value?'on':'off')}catch{}funRef.current=value;setFun(value);for(const o of jobs.current.values()){if(o.phase==='person')o.coins=value?(o.coins??mint()):null;}sync()}
  const sync=()=>{if(alive.current)redraw(Array.from(jobs.current.values(),o=>({...o})))};
  useEffect(()=>{if(!ready)return;let last=canCapture(v.current);
    const timer=setInterval(()=>{const next=canCapture(v.current);if(next!==last){last=next;sync()}},150);
@@ -198,7 +200,7 @@ function App(){
   <aside><a href="https://github.com/NomaDamas/HowMuch" target="_blank" rel="noreferrer">HowMuch by NomaDamas MinXing</a> · 조회한 판매처 기준</aside>
  </section>
  {list&&<div className="back"><section className="sheet" role="dialog" aria-label="조사 목록"><h2>조사 목록</h2>{items.length===0&&<p>조사 중인 물체가 없습니다.</p>}{items.map(o=><div key={o.id} className="job-row"><button onClick={()=>{setList(false);setDetail(o.id)}}>#{o.id} {o.result?.candidates?.[0]?.name||o.candidate?.name||'선택한 물체'} · {o.phase==='segmenting'?'윤곽 찾는 중':o.phase==='identifying'?'식별 중':o.phase==='loading'?'시세 조사 중':o.error||summarizeCard(o.result).price}</button><button aria-label={'목록에서 물체 '+o.id+' 조사 취소'} onClick={()=>cancelJob(o.id)}>×</button></div>)}<button className="primary" onClick={()=>setList(false)}>카메라로 돌아가기</button></section></div>}
-  {settings&&<div className="back"><section className="sheet" role="dialog" aria-label="설정"><small>FIELD LENS</small><h2>카메라 설정</h2><label className="option"><input type="checkbox" checked={fun} onChange={e=>enableFun(e.target.checked)}/> 사람 캐릭터 카드 · 무작위 놀이 코인</label><p>외모나 체형과 무관하며 실제 가격이 아닙니다.</p><p>화면 윤곽은 잠깐 시야를 잃어도 유지되고, 지원 기기의 공간 보기에서는 누끼 윤곽과 HUD가 같은 월드 앵커를 따라갑니다.</p><a href="https://github.com/NomaDamas/HowMuch" target="_blank" rel="noreferrer" className="option">프로젝트 소스 ↗</a><a href="https://github.com/NomaDamas/HowMuch" target="_blank" rel="noreferrer" className="option star-cta">GitHub에서 HowMuch Star 누르기 ↗</a><p className="muted-copy">Star는 사용자가 GitHub에서 직접 누를 때만 등록됩니다. 인증 토큰은 저장하지 않습니다.</p><button className="option" onClick={()=>{setSettings(false);setPair(true)}}>휴대폰 연결 QR</button><button className="primary" onClick={()=>setSettings(false)}>카메라로 돌아가기</button></section></div>}
+  {settings&&<div className="back"><section className="sheet" role="dialog" aria-label="설정"><small>FIELD LENS</small><h2>카메라 설정</h2><label className="option"><input type="checkbox" checked={fun} onChange={e=>enableFun(e.target.checked)}/> 사람 장난 가격표 (분위기 기반, 실제 가치 아님)</label><p>사람에게는 장난 가격표만 붙으며 외모·체형 평가는 하지 않고 실제 가격이 아닙니다.</p><p>화면 윤곽은 잠깐 시야를 잃어도 유지되고, 지원 기기의 공간 보기에서는 누끼 윤곽과 HUD가 같은 월드 앵커를 따라갑니다.</p><a href="https://github.com/NomaDamas/HowMuch" target="_blank" rel="noreferrer" className="option">프로젝트 소스 ↗</a><a href="https://github.com/NomaDamas/HowMuch" target="_blank" rel="noreferrer" className="option star-cta">GitHub에서 HowMuch Star 누르기 ↗</a><p className="muted-copy">Star는 사용자가 GitHub에서 직접 누를 때만 등록됩니다. 인증 토큰은 저장하지 않습니다.</p><button className="option" onClick={()=>{setSettings(false);setPair(true)}}>휴대폰 연결 QR</button><button className="primary" onClick={()=>setSettings(false)}>카메라로 돌아가기</button></section></div>}
  <Pairing open={pair} onClose={()=>setPair(false)}/>
  {selected&&<Evidence o={selected} fun={fun} beginLabel={()=>beginLabel(jobs.current.get(selected.id))} pause={pauseForSpatial} resume={resumeFromSpatial} close={()=>setDetail(null)} click={()=>note({mode,outcome:'source_click',sourceClicks:1})}/>}
  </main>
@@ -208,7 +210,7 @@ function Hud({o,box,measure,open,fun}){const node=useRef(null),ref=useRef(measur
  useLayoutEffect(()=>{const read=()=>{const r=node.current.getBoundingClientRect();ref.current(o.id,{width:r.width,height:r.height})};read();const ro=new ResizeObserver(read);ro.observe(node.current);return()=>ro.disconnect()},[o.id]);
  const r=o.result,c=r?.candidates[0]||o.candidate,display=summarizeCard(r),isPerson=o.phase==='person',needsLabel=o.phase==='followup_required'||r?.status==='followup_required';
 return <button className="card" ref={node} style={{left:box.x,top:box.y}} onClick={open} data-object-id={o.id} data-phase={o.phase}><small><i/>{needsLabel?'모델 번호 필요':o.phase==='identifying'?'물체 확인 중':o.phase==='loading'?'판매 가격 검색 중':isPerson?'캐릭터':o.phase==='research_unavailable'?'판매처 연결 불가':o.phase==='error'?'검색 실패':o.phase==='partial'&&!r?.produceMarket&&!r?.referenceMarket?'부분 결과':display.type}</small><strong>{isPerson?'사람':(r?.identity?[r.identity.brand,r.identity.model].join(' '):c?.name)|| (needsLabel?'품번·라벨을 가까이 비춰 주세요':o.phase==='identifying'?'누끼 확인 중':o.phase==='loading'?'판매처 대조 중':'확인된 상품 없음')}</strong>
- {['loading','identifying'].includes(o.phase)?<span className="skeleton"/>:<b>{isPerson?(fun?o.coins+' 놀이 코인':'놀이 모드 꺼짐'):display.price}</b>}
+ {['loading','identifying'].includes(o.phase)?<span className="skeleton"/>:<b>{isPerson?(fun&&o.coins?'₩'+o.coins.price.toLocaleString('ko-KR')+' 놀이 가격':'놀이 모드 꺼짐'):display.price}</b>}
  <footer>{isPerson?'실제 가격 아님':needsLabel?'브랜드·모델 근거 필요':o.phase==='identifying'?'선택한 물체 식별 중':o.phase==='loading'?'판매처 대조 중':o.visibility==='reacquiring'?'누끼 재획득 중':display.basis} <ChevronRight size={13}/></footer></button>}
 function Evidence({o,close,click,fun,beginLabel,pause,resume}){
  const r=o.result,display=summarizeCard(r),c=r?.candidates?.[0]??o.candidate;
@@ -218,7 +220,7 @@ function Evidence({o,close,click,fun,beginLabel,pause,resume}){
  const mobile=/(iPhone|iPad|Android)/i.test(navigator.userAgent)||navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1;
  return <div className="back" onClick={close}><section className="sheet" role="dialog" aria-label="가격 근거" onClick={e=>e.stopPropagation()}>
  <small>FIELD NOTES / 조회 근거</small><h2>{title||(o.phase==='person'?'사람 캐릭터':'상품 확인 중')}</h2>
- {o.phase==='person'?<p>{fun?o.coins+' 무작위 놀이 코인 · 실제 가치와 무관합니다.':'설정에서 놀이 모드를 켤 수 있습니다.'}</p>:<>
+ {o.phase==='person'?<p>{fun&&o.coins?o.coins.vibe+' · 장난으로 매긴 가격이며 외모·체형·실제 가치와 무관합니다.':'설정에서 놀이 모드를 켤 수 있습니다.'}</p>:<>
  <p>{o.error||(o.phase==='research_unavailable'?'검색 사이트에 연결하지 못했습니다. 잠시 후 다시 선택해 주세요.':o.phase==='loading'?'판매처에서 가격 근거를 확인 중입니다.':o.phase==='identifying'?'선택한 물체를 식별 중입니다.':clock(r?.completedAt))}</p>
  {!['identifying','loading'].includes(o.phase)&&(r?.followup?<><p>{r.followup.prompt}</p><button className="primary" onClick={beginLabel}>같은 상품의 라벨 추가 촬영</button></>:<div className="best">{display.basis} <b>{display.price}</b></div>)}
  {Array.isArray(proof)&&proof.length>0&&<p>모델 식별 근거: {proof.join(' · ')}</p>}

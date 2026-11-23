@@ -18,7 +18,7 @@ npm run demo
 
 Open **http://localhost:5173**. The launcher starts the loopback research API (:8787), browser agent (:8791), and Vite. Press Ctrl+C to stop. For separate processes run `npm run demo:agent`, `npm run demo:api`, and `npm run dev`. `RESEARCH_TIMEOUT_MS` defaults to 180000; API accepts 1–600 seconds. No public tunnel is used.
 
-HowMuch never stars repositories silently during `git clone` or installation. GitHub authentication is not collected by this project. If you want to support the project, use the in-app **GitHub에서 HowMuch Star 누르기** link or run `gh repo star NomaDamas/HowMuch` yourself after signing in.
+HowMuch never stars repositories silently during `git clone`. After `npm install`, if you are in an interactive terminal with an authenticated GitHub CLI, it asks once `[y/N]` and stars only on an explicit `y` (`HOWMUCH_NO_STAR_PROMPT=1` or CI disables the prompt). You can also use the in-app **GitHub에서 HowMuch Star 누르기** link or `HOWMUCH_CONFIRM_STAR=1 npm run star`. No credential is stored by this project.
 
 ## Phone on the same Wi-Fi
 

@@ -6,6 +6,7 @@ import { finalizeMarket } from './market.mjs';
 import { identityProof, needsModel, requestLabel, modelMatches } from './identity-market.mjs';
 import { commodityFor, readProduce } from './produce-market.mjs';
 import { renderedProduct } from './merchant-dom.mjs';
+import { cliResearch, cliKind } from './cli-agent.mjs';
 import { referenceScope,referenceRows } from './reference-kind.mjs';
 
 const imagePattern = /^data:image\/(png|jpeg|webp);base64,([\w+/=]+)$/i;
@@ -190,6 +191,7 @@ export async function research(body, deps={}){
     signal?.throwIfAborted();
     const [search,merchants]=await Promise.all([guardedContext(browser,true),guardedContext(browser,false)]);
     tools.push('visual_search','text_search');
+    const cliPromise=(deps.cliResearch||cliResearch)(plan,image,scene,{signal}).catch(()=>null);
     const merchantSearches=unique(boundedStrings(plan.catalogUrls,2,1000).map(merchantUrl).filter(Boolean));
     const branches=await Promise.all([
       discover(search,'https://www.google.com/imghp?hl=en',image),
@@ -200,7 +202,8 @@ export async function research(body, deps={}){
     discovery.visual={status:branches[0].status,fileAttached:branches[0].attached,uploadAcknowledged:branches[0].acknowledged,merchantLinks:branches[0].rows.length};
     discovery.catalogs=branches.slice(1+queries.length).map(b=>({status:b.status,merchantLinks:b.rows.length}));
     discovery.text=branches.slice(1,1+queries.length).map(b=>({status:b.status,merchantLinks:b.rows.length}));
-    const seeds=boundedStrings(plan.productUrls,3,1000).map(merchantUrl).filter(Boolean);
+    const hint=await cliPromise;if(hint)tools.push('agent_deep_research');
+    const seeds=unique([...(hint?.productUrls||[]),...boundedStrings(plan.productUrls,3,1000)].map(merchantUrl).filter(Boolean)).slice(0,8);
     discovery.plannedMerchantPages=seeds.length;discovery.openedMerchantPages=0;discovery.offerObservations=0;
     const urls=unique([...seeds,...routes.flat().map(r=>r.url)].filter(Boolean)).slice(0,25);
     tools.push('open_page','extract_offer');
