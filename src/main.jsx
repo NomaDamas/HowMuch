@@ -1,6 +1,6 @@
 import React,{useEffect,useLayoutEffect,useRef,useState} from 'react';
 import {createRoot} from 'react-dom/client';
-import {ScanLine,Settings,Hand,Crosshair,ChevronRight,Camera,ExternalLink} from 'lucide-react';
+import {ScanLine,Settings,Hand,Crosshair,ChevronRight,Camera,ExternalLink,Compass} from 'lucide-react';
 import Pairing from './Pairing.jsx';
 import {previewTemplate,captureMaskedSignature} from './lib/xr-target.js';
 import WorldAnchorButton from './WorldAnchorButton.jsx';
@@ -11,7 +11,10 @@ import {normalizePolygon,screenToMediaSelection} from './lib/geometry.js';
 import {snapshot,cutout,toScreen,overlap,sampleFrame,distance,boxForHud,clamp} from './lib/camera-scene.js';
 import {recordAnonymousEvent} from './lib/telemetry.js';
 import {trackPreview} from './lib/preview-track.js';
+import GhostLayer from './GhostLayer.jsx';
+import {gyroSupported,needsGyroPermission,requestGyro} from './lib/gyro-world.js';
 import './styles.css';
+import './ui-v2.css';
 
 const MAX_JOBS=4;
 // Compare the captured scene to the original mask's interior samples, not its
@@ -37,7 +40,9 @@ function note(event){recordAnonymousEvent(event);try{
 function App(){
  const v=useRef(null),stage=useRef(null),pen=useRef(null),stream=useRef(null),alive=useRef(true),cameraJob=useRef(0);
  const segmentController=useRef(null),ignored=useRef([]);
- const [list,setList]=useState(false);
+ const [list,setList]=useState(false),[gyro,setGyro]=useState(false);
+ useEffect(()=>{if(gyroSupported()&&!needsGyroPermission())setGyro(true)},[]);
+ async function toggleGyro(){if(gyro){setGyro(false);return}setGyro(await requestGyro());setHint('휴대폰을 돌려도 물체 위치를 기억합니다.')}
  const jobs=useRef(new Map()),epoch=useRef(0),sequence=useRef(0),gesture=useRef(null),fade=useRef(),hold=useRef(),since=useRef(0);
  const [items,redraw]=useState([]),[size,setSize]=useState({width:1,height:1}),[measured,setMeasured]=useState({}),[ready,setReady]=useState(false);
  const [mode,setMode]=useState(preferred),[cameraError,setCameraError]=useState(''),[hint,setHint]=useState(''),[settings,setSettings]=useState(false),[pair,setPair]=useState(false),[fun,setFun]=useState(funPref),[detail,setDetail]=useState(null);
@@ -185,10 +190,12 @@ function App(){
  return <main className="app"><section className="camera" ref={stage} aria-label="라이브 가격 카메라">
   <video ref={v} playsInline muted autoPlay/><div className="shade"/>
   <canvas ref={pen} className={'draw-layer '+(mode==='draw'?'enabled':'')} aria-label="물체 그리기" onPointerDown={begin} onPointerMove={move} onPointerUp={e=>end(e)} onPointerCancel={e=>end(e,true)} onLostPointerCapture={e=>end(e,true)}/>
-  <header><b><i><ScanLine size={17}/></i> howmuch<span className="brand-sep">/</span><small>FIELD LENS</small></b><div className="header-actions"><button aria-label="설정" onClick={()=>setSettings(true)}><Settings size={18}/></button><button onClick={()=>setList(true)}>조사 목록 {items.length}</button>{xrCards.length>0&&<WorldAnchorButton compact objects={xrCards} onSessionStart={pauseForSpatial} onSessionEnd={resumeFromSpatial}/>}</div></header>
+  <header><b><i><ScanLine size={17}/></i> howmuch<span className="brand-sep">/</span><small>FIELD LENS</small></b><div className="header-actions"><button aria-label="설정" onClick={()=>setSettings(true)}><Settings size={18}/></button>{gyroSupported()&&<button className={'gyro-btn '+(gyro?'on':'')} aria-pressed={gyro} onClick={toggleGyro}><Compass size={15}/>공간 고정</button>}<button onClick={()=>setList(true)}>조사 목록 {items.length}</button>{xrCards.length>0&&<WorldAnchorButton compact objects={xrCards} onSessionStart={pauseForSpatial} onSessionEnd={resumeFromSpatial}/>}</div></header>
   <div className="hint" role="status"><em/>{cameraError||hint||(ready?(mode==='auto'?'물체를 3.5초 동안 비춰 주세요':'물체를 탭하거나 둘러 그려 주세요'):'카메라 연결 중…')}</div>
   {cameraError&&<button className="retry" onClick={startCamera}><Camera size={15}/> 카메라 다시 허용</button>}
+  {ready&&mode==='auto'&&items.length===0&&!cameraError&&<div className="reticle" aria-hidden="true"><i/><i/><i/><i/><span>물체를 비춰 보세요</span></div>}
   <svg className="contours cutout-outline" viewBox="0 0 1 1" preserveAspectRatio="none" aria-hidden="true">{visible.map(({o,s})=><path key={o.id} fillRule="evenodd" d={(s.contours?.length?s.contours:[s.polygon]).map(r=>r.map((p,i)=>(i?'L':'M')+p.x+' '+p.y).join(' ')+'Z').join(' ')}/>)}</svg>
+  <GhostLayer enabled={gyro} jobs={jobs} video={v} size={size} label={o=>(o.result?.identity?.model||o.result?.candidates?.[0]?.name||o.candidate?.name||'선택한 물체')+' · '+jobState(o)}/>
   {!isCapturing&&visible.map(({o,box})=><React.Fragment key={o.id}><Hud o={o} box={box} fun={fun} measure={(id,n)=>setMeasured(m=>m[id]?.width===n.width&&m[id]?.height===n.height?m:{...m,[id]:n})} open={()=>setDetail(o.id)}/><button className="card-dismiss" style={{left:box.x+box.width-25,top:box.y+5}} aria-label={'물체 '+o.id+' 조사 취소'} onClick={e=>{e.stopPropagation();cancelJob(o.id)}}>X</button></React.Fragment>)}
   {items.length>0&&<div className="job-tray" aria-label="진행 중인 조사">
    <div className="job-tray-head"><strong>조사 중인 물체</strong><button onClick={()=>setList(true)}>전체 보기</button></div>

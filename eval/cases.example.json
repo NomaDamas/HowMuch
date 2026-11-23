@@ -1,0 +1,4 @@
+[
+  { "name": "AirPods Pro 2", "image": "eval/images/airpods.jpg", "expect": { "modelIncludes": "AirPods Pro", "minPrice": 200000, "maxPrice": 400000 } },
+  { "name": "Apples (loose)", "image": "eval/images/apples.jpg", "expect": { "commodity": true } }
+]

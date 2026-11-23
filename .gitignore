@@ -9,3 +9,4 @@ dist/
 .howmuch/
 __pycache__/
 .howmuch-star-asked
+eval/images/

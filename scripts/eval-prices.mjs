@@ -1,0 +1,30 @@
+#!/usr/bin/env node
+// Field-accuracy harness: node scripts/eval-prices.mjs eval/cases.json [http://127.0.0.1:8791/agent/research]
+// Each case sends a real photo as cutout+scene to the research agent and scores the answer against an expected
+// price band / model substring. Prints per-case latency and an overall hit rate. Needs VLM_* env on the agent.
+import { readFileSync } from 'node:fs';
+const [file = 'eval/cases.json', endpoint = process.env.RESEARCH_AGENT_ENDPOINT || 'http://127.0.0.1:8791/agent/research'] = process.argv.slice(2);
+const cases = JSON.parse(readFileSync(file, 'utf8'));
+const dataUrl = p => `data:image/${/\.png$/i.test(p) ? 'png' : 'jpeg'};base64,${readFileSync(p).toString('base64')}`;
+let hits = 0, answered = 0;
+const rows = [];
+for (const c of cases) {
+  const started = performance.now();
+  let verdict = 'error', detail = '';
+  try {
+    const img = dataUrl(c.image);
+    const res = await fetch(endpoint, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ imageContext: { cutoutDataUrl: img, fullFrameDataUrl: img } }), signal: AbortSignal.timeout(200000) });
+    const r = await res.json();
+    const lowest = r.lowest?.price ?? r.representative?.price ?? r.produceMarket?.price ?? null;
+    const model = [r.identity?.brand, r.identity?.model].filter(Boolean).join(' ') || r.candidates?.[0]?.name || '';
+    detail = `${r.status} · ${model} · ${lowest ?? '가격없음'}`;
+    if (r.status === 'complete' || r.status === 'partial') answered++;
+    const e = c.expect || {};
+    const modelOk = !e.modelIncludes || model.toLowerCase().includes(e.modelIncludes.toLowerCase());
+    const priceOk = e.commodity ? Boolean(r.produceMarket) : lowest != null && (e.minPrice == null || lowest >= e.minPrice) && (e.maxPrice == null || lowest <= e.maxPrice);
+    verdict = modelOk && priceOk ? 'HIT' : 'MISS'; if (verdict === 'HIT') hits++;
+  } catch (e) { detail = String(e.message || e); }
+  rows.push({ name: c.name, verdict, seconds: ((performance.now() - started) / 1000).toFixed(1), detail });
+}
+console.table(rows);
+console.log(`hit rate ${hits}/${cases.length} (${Math.round(100 * hits / Math.max(cases.length, 1))}%), answered ${answered}/${cases.length}`);
