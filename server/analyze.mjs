@@ -7,6 +7,7 @@ import { randomUUID } from 'node:crypto';
 import { assertResearchEnvelope, isValidResearchInput } from './research-contract.mjs';
 import { pairingStore } from './pairing.mjs';
 import { jobStore } from './jobs.mjs';
+import { githubStar } from './github-star.mjs';
 
 const timeout = () => Math.max(1000,Math.min(600000, Number(process.env.RESEARCH_TIMEOUT_MS)||180000));
 const json = (res,status,body,extra={}) => {
@@ -32,7 +33,7 @@ export async function researchAgent(input, signal, onPhase) {
       runtime:'howmuch-research-v1',task:'multimodal-research-agent',jobId:randomUUID(),
       imageContext:{fullFrameDataUrl:image,cutoutDataUrl:cutout,selection:input.selection},
       ...(input.labelDataUrl && {labelDataUrl:input.labelDataUrl}), ...(input.modelHint && {modelHint:input.modelHint}), ...(input.region && {region:input.region}),
-      imageDataUrl:image,cutoutDataUrl:cutout,selection:input.selection,locale:input.locale||'ko-KR',
+      imageDataUrl:image,cutoutDataUrl:cutout,selection:input.selection,locale:input.locale||'en-US',
       tools:['agent_web_search']
     })});
   if (!response.ok) throw Object.assign(Error('research_agent_unavailable'),{status:response.status});
@@ -64,7 +65,7 @@ export async function researchAgent(input, signal, onPhase) {
 }
 const imageValid = v=> typeof v==='string' && /^data:image\/(jpeg|jpg|png|webp);base64,/i.test(v) && v.length<=12000000;
 export function gateway({phoneOrigin, research=researchAgent, agentOrigin='http://127.0.0.1:8791'}={}) {
-  const pairing=pairingStore(), jobs=jobStore(), budget=new Map(); let active=0;
+  const pairing=pairingStore(), jobs=jobStore(), star=githubStar(), budget=new Map(); let active=0;
   function rate(owner) {
     const t=Date.now(); for(const [id,v] of budget) if(v.until<=t) budget.delete(id);
     const v=budget.get(owner)||{until:t+60000,n:0}; budget.set(owner,v); return ++v.n<=30;
@@ -106,6 +107,12 @@ export function gateway({phoneOrigin, research=researchAgent, agentOrigin='http:
         for(const e of job.events)send(e); if(res.writableEnded)return;
         job.listeners.add(send); const timer=setInterval(()=>res.write(': keepalive\n\n'),15000);
         res.on('close',()=>{clearInterval(timer);job.listeners.delete(send)}); return;
+      }
+      if(req.method==='POST' && route.startsWith('/api/github/star/')){
+        if(!rate(owner)) return json(res,429,{error:'rate_limited'},{'retry-after':'60'});
+        const out=route==='/api/github/star/start'?await star.start():route==='/api/github/star/poll'?await star.poll((await readBody(req,1024))?.pollId):null;
+        if(!out) return json(res,404,{error:'not_found'});
+        return json(res,out.status,out.body);
       }
       if(req.method!=='POST' || !['/api/research','/api/jobs','/agent/segment'].includes(route))return json(res,404,{error:'not_found'});
       if(!rate(owner)) return json(res,429,{error:'rate_limited'},{'retry-after':'60'});

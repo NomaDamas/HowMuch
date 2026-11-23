@@ -26,7 +26,7 @@ Frames are ephemeral by default. Anonymous telemetry contains mode, latency, out
 
 The core exposes `visual_search(imageContext)`, `text_search(queries, imageContext)`, `open_page(url)`, `extract_offer(page)`, and `compare_offers(offers)` as agent tools. REST/OpenAPI, MCP, SSE/WebSocket jobs, TypeScript/Python SDKs, and QR pairing use the same contracts. Browser Use or an equivalent agent runtime is a tool implementation, not a separate user flow.
 
-Every distributed UI shows `HowMuch by NomaDamas MinXing`.
+The camera screen carries no attribution text; `HowMuch by NomaDamas MinXing` is shown in Settings (About).
 
 The same versioned contracts are exposed through REST/OpenAPI, MCP, SSE/WebSocket jobs, TypeScript/Python SDKs, and short-lived QR/deep-link pairing. QR tokens never contain provider secrets.
 
@@ -68,3 +68,12 @@ All approved user messages are preserved unmodified in [APPROVED_REQUIREMENTS.md
 > 파나 감자 이런 농작물 혹은 어디에서 사나 다를게 없는것들도 모델을 찾는것이 아닌 인터넷 시세를 바로 딥리서치해서 볼수있게 해야하고. 모델 번호 불명 케이스는 여러개 한 5개 ~ 10개 시세를 평균때리는거고. 농산물 시세도 에이전트로 이전하도록하고 에이전틱 검색만이 기능으로 들어가야해
 
 Three tiers, agent-only: **exact model** (lowest price of that model), **rough estimate** (3-10 comparable listings averaged when the model is unknown, with a request to type the model or show the label), and **market unit price** (food and other shop-independent goods researched directly, no model). Details in [AGENT_RESEARCH.md](AGENT_RESEARCH.md).
+
+## App behaviour (latest)
+
+* English by default; Korean is switchable in Settings and also applies to agent search results (`locale` is sent with the request).
+* Before the camera starts, a star button asks the user to star the repo on GitHub (device-flow approval; needs `GITHUB_CLIENT_ID`). Once starred it never appears again; "Later" skips it.
+* The card on an object shows only the model and the price. Tapping it opens a glass sheet with the model and price; a **Details** toggle reveals statistics and sources. Sheets close by swiping down, tapping outside, or Esc.
+* A bar at the top lists every object (thumbnail, name, price); tap one to focus it, tap again (or **All**) to see all.
+* When an object leaves the picture or the phone turns, its dashed cut-out stays projected on the plane where the object was (rotation only; confidence fades with time), with an arrow when it is out of view.
+* People get a playful outfit-and-vibe price; the product does not rate anyone's looks or body.
