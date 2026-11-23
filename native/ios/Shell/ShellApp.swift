@@ -12,7 +12,7 @@ import WebKit
     }
 }
 
-final class ShellController: UIViewController, WKNavigationDelegate, WKUIDelegate {
+final class ShellController: UIViewController, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler {
     private var web: WKWebView!
     private let key = "howmuch.appURL"
     private var serverURL: URL {
@@ -30,6 +30,17 @@ final class ShellController: UIViewController, WKNavigationDelegate, WKUIDelegat
         c.applicationNameForUserAgent = "HowMuchApp"
         c.allowsInlineMediaPlayback = true
         c.mediaTypesRequiringUserActionForPlayback = []
+        // Diagnostics: forward page errors and camera outcomes to the device log (visible with `devicectl --console`).
+        let probe = """
+(function(){var send=function(l,m){try{webkit.messageHandlers.log.postMessage(l+': '+String(m).slice(0,400))}catch(e){}};
+['error','warn'].forEach(function(k){var o=console[k];console[k]=function(){send('console.'+k,[].slice.call(arguments).join(' '));o.apply(console,arguments)}});
+addEventListener('error',function(e){send('error',e.message+' @'+e.filename+':'+e.lineno)});
+addEventListener('unhandledrejection',function(e){send('rejection',e.reason&&e.reason.message||e.reason)});
+var md=navigator.mediaDevices;if(md&&md.getUserMedia){var g=md.getUserMedia.bind(md);md.getUserMedia=function(c){send('camera','requesting');return g(c).then(function(s){send('camera','granted '+s.getVideoTracks().map(function(t){return t.label}).join(','));return s},function(e){send('camera','DENIED '+e.name+' '+e.message);throw e})}}
+})();
+"""
+        c.userContentController.addUserScript(WKUserScript(source: probe, injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        c.userContentController.add(self, name: "log")
         web = WKWebView(frame: view.bounds, configuration: c)
         web.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         web.navigationDelegate = self; web.uiDelegate = self
@@ -67,7 +78,18 @@ final class ShellController: UIViewController, WKNavigationDelegate, WKUIDelegat
         } else { completionHandler(.performDefaultHandling, nil) }
     }
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) { NSLog("HowMuch load failed: %@", error.localizedDescription); askServer(error: error.localizedDescription) }
-    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) { NSLog("HowMuch loaded %@", webView.url?.absoluteString ?? "") }
+    func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) { NSLog("HowMuch page %@", String(describing: message.body)) }
+    private var autotested = false
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        NSLog("HowMuch loaded %@", webView.url?.absoluteString ?? "")
+        // `-howmuch.autotest 1`: skip the star prompt once and report what the page shows (for remote verification).
+        guard UserDefaults.standard.bool(forKey: "howmuch.autotest"), !autotested else { return }
+        autotested = true
+        webView.evaluateJavaScript("localStorage.setItem('howmuch-starred','1');location.reload();") { _, _ in }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 6) {
+            webView.evaluateJavaScript("JSON.stringify({lang:document.documentElement.lang,brand:(document.querySelector('.brand')||{}).innerText,mode:[].map.call(document.querySelectorAll('nav button'),function(b){return b.innerText}),gate:!!document.querySelector('.stargate'),video:!!(document.querySelector('video')||{}).srcObject,w:innerWidth,h:innerHeight,secure:isSecureContext,gyro:typeof DeviceOrientationEvent,cam:!!(navigator.mediaDevices&&navigator.mediaDevices.getUserMedia)})") { r, e in NSLog("HowMuch autotest %@ %@", String(describing: r), String(describing: e)) }
+        }
+    }
     // Source links open in the system browser.
     func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration, for action: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
         if let u = action.request.url { UIApplication.shared.open(u) }
