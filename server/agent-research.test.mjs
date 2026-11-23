@@ -93,3 +93,12 @@ test('runAgent sends both images with the hosted web_search tool', async () => {
   assert.equal(sent.url, 'https://p.example/v1/responses'); assert.deepEqual(sent.body.tools, [{ type: 'web_search' }]);
   assert.equal(sent.body.input[0].content.filter(c => c.type === 'input_image').length, 2); assert.equal(r.identity.brand, 'B');
 });
+
+test('the chosen language reaches the agents and the follow-up text', async () => {
+  assert.match(buildAgentPrompt('f', '', 'Korean'), /in Korean/); assert.match(buildAgentPrompt('f', '', 'English'), /in English/);
+  let lang; const unknown = o => agent({ level: 'type', identity: ident({ brand: '', model: '', confidence: .3 }), type: { name: 'earbuds', attributes: [] }, offers: o });
+  const r = await agentResearch({ ...body, locale: 'ko-KR' }, { agents: 1, graceMs: 5, runAgent: (f, i, o) => { lang = o.language; return unknown([offer('https://a.co.kr/p/1', 100000, 'x')])(); } });
+  assert.equal(lang, 'Korean'); assert.match(r.followup.prompt, /모델명/);
+  const en = await agentResearch({ ...body, locale: 'en-US' }, { agents: 1, graceMs: 5, runAgent: (f, i, o) => { lang = o.language; return unknown([offer('https://a.co.kr/p/1', 100000, 'x')])(); } });
+  assert.equal(lang, 'English'); assert.match(en.followup.prompt, /model name/i);
+});
