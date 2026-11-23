@@ -73,7 +73,7 @@ function App(){
    const onPhase=e=>{if(live()&&e.phase==='researching'){o.phase='loading';o.candidate=e.candidate;sync()}};
    try{
     const request=o.original ?? {imageDataUrl:source.toDataURL('image/jpeg',.85),cutoutDataUrl:o.selection.cutoutDataUrl||cutout(source,o.selection),selection:{x:o.selection.x,y:o.selection.y,width:o.selection.width,height:o.selection.height,polygon:o.selection.polygon},locale:'ko-KR'};
-    const r=await new HttpResearchProvider(providerConfig().researchEndpoint).research({...request,...(labelDataUrl&&{labelDataUrl})},o.controller.signal,onPhase);
+    const r=await new HttpResearchProvider(providerConfig().researchEndpoint,providerConfig().jobsEndpoint).research({...request,...(labelDataUrl&&{labelDataUrl})},o.controller.signal,onPhase);
     o.original=r.status==='followup_required'?request:null;
     if(!live())return;
     const candidate=r.candidates?.[0];if(candidate&&person(candidate)){o.phase='person';o.result=null;o.coins=funRef.current?mint():null}else{o.result=r;o.phase=r.status||'complete'}

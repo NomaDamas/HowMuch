@@ -1,12 +1,12 @@
 import http from 'node:http';
 import { pathToFileURL } from 'node:url';
-import { chromium } from 'playwright';
+// Playwright is only needed by the legacy crawler pipeline: load it lazily so agent-only servers need no browser.
+const chromium={launch:async o=>(await import('playwright')).chromium.launch(o)};
 import { publicHost, merchantUrl, productObservations } from './merchant-prices.mjs';
 import { finalizeMarket } from './market.mjs';
 import { identityProof, inferredProof, needsModel, requestLabel, modelMatches } from './identity-market.mjs';
 import { commodityFor, readProduce } from './produce-market.mjs';
 import { renderedProduct } from './merchant-dom.mjs';
-import { cliResearch, cliResearchAll, cliKind, cliKinds } from './cli-agent.mjs';
 import { referenceScope,referenceRows } from './reference-kind.mjs';
 
 const imagePattern = /^data:image\/(png|jpeg|webp);base64,([\w+/=]+)$/i;
@@ -183,13 +183,6 @@ export async function research(body, deps={}){
   const plan=await ask([{role:'user',content:[{type:'text',text:identifyPrompt+identifyRules+' First image is the selected object, second is surrounding context. Never select a different object from the second image.'},{type:'image_url',image_url:{url:image}},{type:'image_url',image_url:{url:scene}},...extra]}]);
   if(process.env.HOWMUCH_DEBUG)console.error('[plan]',JSON.stringify({name:plan.name,brand:plan.brand,model:plan.model,category:plan.category,confidence:plan.confidence,aliases:plan.modelAliases,brandAliases:plan.brandAliases,req:plan.requiresExactModel}));
   const confidence=Number(plan.confidence);
-  // Agent-only mode: when our VLM could not name the object, the search agents identify it themselves.
-  let earlyHint=null;
-  if(process.env.HOWMUCH_AGENT_ONLY==='1'&&cliKinds().length&&plan.kind!=='person'&&!(plan.kind==='product'&&typeof plan.name==='string'&&plan.name.trim()&&Number(plan.confidence)>=.60&&String(plan.brand||'').trim()&&String(plan.model||'').trim())){
-    earlyHint=await (deps.cliResearch||cliResearchAll)(plan,image,scene,{signal}).catch(()=>null);
-    const id=earlyHint?.identity;
-    if(id?.model&&id?.brand)Object.assign(plan,{kind:'product',name:(id.brand+' '+id.model).trim(),brand:id.brand,model:id.model,category:plan.category||'product',confidence:.8,visibleModelEvidence:[]});
-  }
   const person=plan.kind==='person', product=plan.kind==='product' && typeof plan.name==='string' && plan.name.trim() && confidence>=.60 && confidence<=1;
   const modelEvidence=boundedStrings(plan.visibleModelEvidence,4,180);
   const candidates=person?[{name:'사람',category:'person',confidence:1}]:product?[{name:plan.name.slice(0,160),brand:String(plan.brand||'').slice(0,80),model:String(plan.model||'').slice(0,100),visibleModelEvidence:modelEvidence,category:String(plan.category||'product').slice(0,80),confidence}]:[];
@@ -236,11 +229,9 @@ export async function research(body, deps={}){
     signal?.throwIfAborted();
     const [search,merchants]=await Promise.all([guardedContext(browser,true),guardedContext(browser,false)]);
     tools.push('visual_search','text_search');
-    const cliPromise=(earlyHint?Promise.resolve(earlyHint):(deps.cliResearch||cliResearchAll)(plan,image,scene,{signal})).catch(()=>null);
     const compareQuery=proof?[proof.brandAliases?.[0]||proof.brand,proof.modelAliases?.[0]||proof.model].join(' '):candidates[0].name;
     const merchantSearches=unique([...boundedStrings(plan.catalogUrls,2,1000),'https://search.danawa.com/dsearch.php?query='+encodeURIComponent(compareQuery),'https://www.enuri.com/search.jsp?keyword='+encodeURIComponent(compareQuery)].map(merchantUrl).filter(Boolean));
-    const agentOnly=process.env.HOWMUCH_AGENT_ONLY==='1'&&cliKinds().length>0;
-    const branches=agentOnly?[]:await Promise.all([
+    const branches=await Promise.all([
       discover(search,'https://www.google.com/imghp?hl=en',image),
       ...queries.map(q=>discover(search,'https://www.google.com/search?q='+encodeURIComponent(q+' buy price')+'&hl=en')),
       ...merchantSearches.map(url=>discover(merchants,url,undefined,candidates[0].name))
@@ -249,24 +240,13 @@ export async function research(body, deps={}){
     discovery.visual=branches[0]?{status:branches[0].status,fileAttached:branches[0].attached,uploadAcknowledged:branches[0].acknowledged,merchantLinks:branches[0].rows.length}:{status:'skipped_agent_only'};
     discovery.catalogs=branches.slice(1+queries.length).map(b=>({status:b.status,merchantLinks:b.rows.length}));
     discovery.text=branches.slice(1,1+queries.length).map(b=>({status:b.status,merchantLinks:b.rows.length}));
-    const hint=await cliPromise;if(hint)tools.push('agent_deep_research');
-    // Waiting for the search agent must not consume the time reserved for opening and verifying its pages.
-    clearTimeout(deadline);deadline=setTimeout(()=>{void browser.close().catch(()=>{});},Number(process.env.HOWMUCH_VERIFY_DEADLINE_MS||90000));
-    if(process.env.HOWMUCH_DEBUG)console.error('[hint]',JSON.stringify({identity:hint?.identity,offers:(hint?.offers||[]).map(o=>[o.url.slice(0,70),o.price,o.title.slice(0,30)]),notes:hint?.notes}));
-    const seeds=unique([...(hint?.productUrls||[]),...boundedStrings(plan.productUrls,3,1000)].map(merchantUrl).filter(Boolean)).slice(0,8);
+    const seeds=unique([...boundedStrings(plan.productUrls,3,1000)].map(merchantUrl).filter(Boolean)).slice(0,8);
     discovery.plannedMerchantPages=seeds.length;discovery.openedMerchantPages=0;discovery.offerObservations=0;
     // Price-comparison product pages (lowest price across sellers) go first; the model still verifies identity.
     const comparePages=unique(routes.flat().map(r=>{try{const u=new URL(r.url);return u.hostname==='prod.danawa.com'&&u.searchParams.get('pcode')?'https://prod.danawa.com/info/?pcode='+u.searchParams.get('pcode'):null}catch{return null}}).filter(Boolean)).slice(0,4);
     const urls=unique([...comparePages,...seeds,...routes.flat().map(r=>r.url)].filter(Boolean)).slice(0,25);
     tools.push('open_page','extract_offer');
     const observations=[], visited=new Set();let reached=0;
-    if(hint?.offers?.length){// The agent only locates pages. Prefer the page's OWN structured price (Offer / comparison-site AggregateOffer); fall back to
-    // confirming the agent's number verbatim in the page text. The agent's claimed number is never shown on its own.
-    const claimed=(await Promise.all(hint.offers.slice(0,6).map(async c=>{
-      const own=await observePage(merchants,c.url,()=>{reached++});
-      if(own.length)return own.slice(0,2).map(o=>({...o,agentLocated:true,evidence:[...o.evidence,'Page located by the search agent']}));
-      const text=await confirmClaim(merchants,c);return text?[text]:[];
-    }))).flat();if(process.env.HOWMUCH_DEBUG)console.error('[confirmed]',claimed.length,'of',hint.offers.length);observations.push(...claimed);discovery.agentOffersReported=hint.offers.length;discovery.agentOffersConfirmed=claimed.length;}
     // Each model decision sees actual discovery and extraction feedback. It may stop, open discovered URLs
     // or propose different public merchant pages after a block; each action still passes the same guards.
     for(let round=0;round<2 && visited.size<8;round++){
@@ -308,10 +288,13 @@ export async function research(body, deps={}){
     return finish({...await finalizeMarket(verified,process.env.HOWMUCH_CURRENCY || 'KRW'),pricingMode:strict?'exact_model':'verified_offer',...(strict && {identity:proof})});
   } finally {clearTimeout(deadline);signal?.removeEventListener('abort',cancel);await browser.close().catch(()=>{});}
 }
+import { agentResearch } from './agent-research.mjs';
+// Default: agent-only research (parallel hosted web-search agents). HOWMUCH_RESEARCH=legacy keeps the old crawler pipeline.
+export const researchEntry=(body,deps)=>process.env.HOWMUCH_RESEARCH==='legacy'?research(body,deps):agentResearch(body,deps);
 if(process.argv[1] && import.meta.url===pathToFileURL(process.argv[1]).href){
   createAgentServer().listen(Number(process.env.AGENT_PORT||8791),'127.0.0.1',()=>console.log('HowMuch local research agent ready'));
 }
-export function createAgentServer(runResearch=research){
+export function createAgentServer(runResearch=researchEntry){
   const jobs={'/agent/research':0,'/agent/segment':0};
   return http.createServer(async(req,res)=>{
     const disconnect=new AbortController();

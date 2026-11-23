@@ -27,6 +27,7 @@ final class ShellController: UIViewController, WKNavigationDelegate, WKUIDelegat
     override func viewDidLoad() {
         super.viewDidLoad(); view.backgroundColor = .black
         let c = WKWebViewConfiguration()
+        c.applicationNameForUserAgent = "HowMuchApp"
         c.allowsInlineMediaPlayback = true
         c.mediaTypesRequiringUserActionForPlayback = []
         web = WKWebView(frame: view.bounds, configuration: c)
