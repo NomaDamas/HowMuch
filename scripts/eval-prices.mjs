@@ -13,7 +13,7 @@ const work = async c => {
   let verdict = 'error', detail = '';
   try {
     const img = dataUrl(c.image);
-    const res = await fetch(endpoint, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ imageContext: { cutoutDataUrl: img, fullFrameDataUrl: img } }), signal: AbortSignal.timeout(200000) });
+    const res = await fetch(endpoint, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ imageContext: { cutoutDataUrl: img, fullFrameDataUrl: img }, ...(process.env.EVAL_IMAGE_SEARCH === '1' && { imageSearch: true }) }), signal: AbortSignal.timeout(200000) });
     const r = await res.json();
     const byId = new Map((r.offers || []).map(o => [o.id, o]));
     const lowest = byId.get(r.lowest)?.price ?? r.lowest?.price ?? r.representative?.min ?? r.estimate?.median ?? null;

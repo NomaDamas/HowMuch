@@ -6,12 +6,13 @@ import { pathToFileURL } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { assertResearchEnvelope, isValidResearchInput } from './research-contract.mjs';
 import { pairingStore } from './pairing.mjs';
+import { imageSearchAvailable } from './image-lookup.mjs';
 import { jobStore } from './jobs.mjs';
 import { githubStar } from './github-star.mjs';
 import { ghLocal, localHost } from './gh-local.mjs';
 
 // Progress steps are display text only: whitelist the kinds, strip control characters and cap the length.
-const STEP_KINDS=new Set(['cache','identified','search','open','cite','agentDone','compare']);
+const STEP_KINDS=new Set(['image','cache','identified','search','open','cite','agentDone','compare']);
 export const safeStep=s=>s&&STEP_KINDS.has(s.kind)?{kind:s.kind,...(typeof s.text==='string'&&s.text.trim()?{text:s.text.replace(/[\u0000-\u001f\u007f]/g,' ').trim().slice(0,80)}:{}),...(Number.isInteger(s.n)?{n:Math.max(0,Math.min(999,s.n))}:{}),...(Number.isInteger(s.agent)&&s.agent>=0&&s.agent<9?{agent:s.agent}:{})}:null;
 const timeout = () => Math.max(1000,Math.min(600000, Number(process.env.RESEARCH_TIMEOUT_MS)||180000));
 const json = (res,status,body,extra={}) => {
@@ -36,7 +37,7 @@ export async function researchAgent(input, signal, onPhase) {
     headers:{'content-type':'application/json',accept:streamed?'application/x-ndjson':'application/json'},body:JSON.stringify({
       runtime:'howmuch-research-v1',task:'multimodal-research-agent',jobId:randomUUID(),
       imageContext:{fullFrameDataUrl:image,cutoutDataUrl:cutout,selection:input.selection},
-      ...(input.labelDataUrl && {labelDataUrl:input.labelDataUrl}), ...(input.modelHint && {modelHint:input.modelHint}), ...(input.region && {region:input.region}),
+      ...(input.labelDataUrl && {labelDataUrl:input.labelDataUrl}), ...(input.modelHint && {modelHint:input.modelHint}), ...(input.imageSearch===true && {imageSearch:true}), ...(input.region && {region:input.region}),
       imageDataUrl:image,cutoutDataUrl:cutout,selection:input.selection,locale:input.locale||'en-US',
       tools:['agent_web_search']
     })});
@@ -72,7 +73,7 @@ export async function researchAgent(input, signal, onPhase) {
 }
 const imageValid = v=> typeof v==='string' && /^data:image\/(jpeg|jpg|png|webp);base64,/i.test(v) && v.length<=12000000;
 export function gateway({phoneOrigin, research=researchAgent, agentOrigin='http://127.0.0.1:8791'}={}) {
-  const pairing=pairingStore(), jobs=jobStore(), star=githubStar(), gh=ghLocal(), budget=new Map(); let active=0;
+  const pairing=pairingStore(Date.now,{file:process.env.HOWMUCH_PAIRING_FILE||resolve('.howmuch','pairing.json')}), jobs=jobStore(), star=githubStar(), gh=ghLocal(), budget=new Map(); let active=0;
   function rate(owner) {
     const t=Date.now(); for(const [id,v] of budget) if(v.until<=t) budget.delete(id);
     const v=budget.get(owner)||{until:t+60000,n:0}; budget.set(owner,v); return ++v.n<=30;
@@ -97,7 +98,7 @@ export function gateway({phoneOrigin, research=researchAgent, agentOrigin='http:
       if (route==='/v1/pairing/exchange' && req.method==='POST' && isPhone) {
         const body=await readBody(req,2048), c=pairing.exchange(body?.sessionId,body?.token);
         if(!c) return json(res,401,{error:'invalid_or_expired'});
-        return json(res,200,{expiresAt:c.expiresAt},{'set-cookie':'__Host-howmuch='+c.id+'.'+c.clientToken+'; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=600'});
+        return json(res,200,{expiresAt:c.expiresAt},{'set-cookie':'__Host-howmuch='+c.id+'.'+c.clientToken+'; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=604800'});
       }
       const [sid,token]=(req.headers.cookie?.match(/(?:^|;\s*)__Host-howmuch=([^;]+)/)?.[1]||'').split('.');
       const owner=isPhone?sid:'desktop';
@@ -116,6 +117,7 @@ export function gateway({phoneOrigin, research=researchAgent, agentOrigin='http:
         res.on('close',()=>{clearInterval(timer);job.listeners.delete(send)}); return;
       }
       // Star with the GitHub CLI signed in on this machine: local servers only, fixed repo, and only after the user's approval.
+      if(route==='/api/image-search/status'&&req.method==='GET')return json(res,200,{available:imageSearchAvailable()});
       if(['/api/github/star/status','/api/github/star/local','/api/github/star/login'].includes(route)){
         if(!localHost(host)) return json(res,404,{error:'not_found'});
         if(!rate(owner)) return json(res,429,{error:'rate_limited'},{'retry-after':'60'});

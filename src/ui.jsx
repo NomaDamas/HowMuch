@@ -145,6 +145,23 @@ export function ItemsSheet({ items, fun, close, open, cancel }) {
   </Sheet>;
 }
 
+const IMG_KEY = 'howmuch-imagesearch';
+/** Reverse image search is opt-in: nothing is sent to Google unless this is on (Settings > Advanced). */
+export const imageSearchOn = () => { try { return localStorage.getItem(IMG_KEY) === '1'; } catch { return false; } };
+const setImageSearch = on => { try { localStorage.setItem(IMG_KEY, on ? '1' : '0'); } catch { /* ignore */ } };
+
+function Advanced() {
+  useLang();
+  const [on, setOn] = useState(imageSearchOn), [available, setAvailable] = useState(null);
+  useEffect(() => { let live = true; fetch('/api/image-search/status').then(r => r.json()).then(b => live && setAvailable(Boolean(b.available)), () => live && setAvailable(false)); return () => { live = false; }; }, []);
+  const toggle = () => { const next = !on; setOn(next); setImageSearch(next); };
+  return <details className="advanced">
+    <summary>{t('settings.advanced')}</summary>
+    <div className="row"><span>{t('settings.imageSearch')}</span><button className="switch" role="switch" aria-checked={on && available !== false} disabled={available === false} aria-label={t('settings.imageSearch')} onClick={toggle} /></div>
+    <p className="note">{available === false ? t('settings.imageSearch.off') : t('settings.imageSearch.note')}</p>
+  </details>;
+}
+
 export function SettingsSheet({ close, fun, setFun, pair, star }) {
   const lang = useLang();
   return <Sheet label={t('sheet.settings')} onClose={close}>
@@ -152,6 +169,7 @@ export function SettingsSheet({ close, fun, setFun, pair, star }) {
     <div className="row"><span>{t('settings.language')}</span><div className="seg" role="group" aria-label={t('settings.language')}>
       {[['en', 'English'], ['ko', '한국어']].map(([k, n]) => <button key={k} className={lang === k ? 'on' : ''} aria-pressed={lang === k} onClick={() => setLang(k)}>{n}</button>)}</div></div>
     <div className="row"><span>{t('settings.fun')}</span><button className="switch" role="switch" aria-checked={fun} aria-label={t('settings.fun')} onClick={() => setFun(!fun)} /></div>
+    <Advanced />
     <div className="settings-links">
       <button className="option" onClick={pair}>{t('settings.pair')}</button>
       <button className="option" onClick={star}><Star size={18} />{t('settings.star')}</button>

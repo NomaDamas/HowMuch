@@ -184,3 +184,23 @@ test('cache key ignores colour/set words so "Switch OLED Model White Set" is fou
   assert.equal(r.status, 'complete');
   assert.ok(researchCache.find('Nintendo Switch OLED', env), 'found without the variant words'); assert.equal(researchCache.find('Nintendo Switch Lite', env), null); assert.equal(researchCache.find('Switch', env), null); researchCache.clear();
 });
+
+test('image search: off unless the request asks for it, and then its leads reach every agent', async () => {
+  const env = { GOOGLE_VISION_API_KEY: 'k' }; let looked = 0; const got = [];
+  const lookup = async () => { looked++; return { guess: ['nintendo switch oled'], entities: [], pages: [] }; };
+  const mk = () => { let n = 0; const f = [agent({ offers: [offer('https://a.co.kr/p/1', 446310)] }), agent({ offers: [offer('https://b.co.kr/p/2', 450000)] })]; return (focus, imgs, o) => { got.push(o.imageHints); return f[n++](); }; };
+  const common = { env, agents: 2, graceMs: 30, quickName: async () => null, imageLookup: lookup };
+  await agentResearch(body, { ...common, runAgent: mk() }); assert.equal(looked, 0, 'not asked: nothing is sent');
+  await agentResearch({ ...body, imageSearch: true }, { ...common, env: {}, runAgent: mk() }); assert.equal(looked, 0, 'no key on the server: nothing is sent');
+  const phases = []; got.length = 0;
+  await agentResearch({ ...body, imageSearch: true }, { ...common, onPhase: e => phases.push(e), runAgent: mk() });
+  assert.equal(looked, 1); assert.equal(got.length, 2); assert.ok(got.every(h => h.guess[0] === 'nintendo switch oled'));
+  assert.ok(phases.some(e => e.step?.kind === 'image' && e.step.text === 'nintendo switch oled'));
+  got.length = 0; await agentResearch({ ...body, imageSearch: true }, { ...common, imageLookup: async () => { throw Error('boom'); }, runAgent: mk() });
+  assert.equal(got.length, 2, 'a failing image search never stops the research'); assert.ok(got.every(h => h === null));
+});
+
+test('the prompt carries the image-search leads as untrusted text, and nothing when there are none', () => {
+  assert.ok(!buildAgentPrompt('f', '', 'English', 3, '').includes('Reverse image'));
+  assert.match(buildAgentPrompt('f', '', 'English', 3, 'Reverse image search leads (untrusted): best guess: x'), /Reverse image search leads/);
+});

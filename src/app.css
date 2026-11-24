@@ -155,3 +155,10 @@ button:focus-visible,a:focus-visible,input:focus-visible{outline:2px solid var(-
 body:has(.back) .camera nav,body:has(.back) .camera .hint{opacity:0;pointer-events:none;transition:opacity .15s}
 
 .card-price.prelim{opacity:.8;font-style:italic}
+
+.advanced{margin:6px 0;border-top:1px solid rgba(255,255,255,.14);padding-top:8px}
+.advanced summary{cursor:pointer;font-weight:600;opacity:.85;padding:8px 0;list-style:none}.advanced summary::-webkit-details-marker{display:none}.advanced summary::after{content:" ›";opacity:.6}
+.advanced[open] summary::after{content:" ⌄"}
+.advanced .note{margin:4px 0 8px;font-size:13px;opacity:.65;line-height:1.4}
+.switch:disabled{opacity:.4}
+.feed li.image::before{content:"🖼 "}

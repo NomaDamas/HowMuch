@@ -3,6 +3,8 @@ export interface ResearchContext {
   cutoutDataUrl: string;
   labelDataUrl?: string;
   modelHint?: string;
+  /** Settings > Advanced: let the server run a reverse image search (the cut-out photo is sent to Google). */
+  imageSearch?: boolean;
   region?: string;
   selection: { x: number; y: number; width: number; height: number; polygon?: Array<{ x: number; y: number }> };
   locale: string;

@@ -212,6 +212,38 @@ try {
     await p.waitForFunction(() => /₩446,310/.test(document.querySelector('.sheet')?.innerText || ''), null, { timeout: 20000 });  // the same sheet turns into the answer
     assert.equal(await p.locator('.work').count(), 0); await c.close();
   }
+  // 13. Settings > Advanced: the image search switch (off by default, disabled when the server has no key) and what a request carries
+  {
+    const c = await newCtx({ viewport: { width: 390, height: 780 }, userAgent: IPHONE }); await c.addInitScript(camStub); const p = await c.newPage(); const sent = [];
+    let available = true;
+    await p.route('**/api/image-search/status', r => r.fulfill({ json: { available } }));
+    await p.route('**/agent/segment', r => r.fulfill({ json: { selections: [sel(.25, .33, 'product')], selection: sel(.25, .33, 'product'), model: 'stub' } }));
+    await p.route('**/api/jobs', r => { sent.push(r.request().postDataJSON()); r.fulfill({ status: 202, json: { jobId: 'j9', status: '/api/jobs/j9', events: '/api/jobs/j9/events' } }); });
+    await p.route('**/api/jobs/j9', r => r.fulfill({ json: { jobId: 'j9', sequence: 1, status: 'running' } }));
+    await p.goto(server.resolvedUrls.local[0]); await p.waitForFunction(() => document.querySelector('video')?.readyState >= 2);
+    await p.getByRole('button', { name: 'Settings' }).click();
+    await p.getByText('Advanced').click();
+    const sw = p.getByRole('switch', { name: 'Image search (Google)' });
+    await sw.waitFor(); assert.equal(await sw.getAttribute('aria-checked'), 'false', 'off by default'); assert.match(await p.locator('.advanced .note').innerText(), /Sends the cut-out photo to Google/);
+    await p.keyboard.press('Escape'); await p.getByRole('button', { name: 'Touch · Draw' }).click(); await p.mouse.click(110, 270);
+    for (let i = 0; i < 80 && !sent.length; i++) await p.waitForTimeout(100);
+    assert.equal(sent.length, 1); assert.equal('imageSearch' in sent[0], false, 'nothing about image search is sent while it is off');
+    await p.getByRole('button', { name: 'Settings' }).click(); await p.getByText('Advanced').click(); await p.getByRole('switch', { name: 'Image search (Google)' }).click();
+    assert.equal(await p.evaluate(() => localStorage.getItem('howmuch-imagesearch')), '1'); await c.close();
+    // once on (remembered), the next request asks the server for the image search
+    const c1 = await newCtx({ viewport: { width: 390, height: 780 }, userAgent: IPHONE }); await c1.addInitScript(camStub); await c1.addInitScript(() => localStorage.setItem('howmuch-imagesearch', '1')); const p1 = await c1.newPage(); sent.length = 0;
+    await p1.route('**/agent/segment', r => r.fulfill({ json: { selections: [sel(.25, .33, 'product')], selection: sel(.25, .33, 'product'), model: 'stub' } }));
+    await p1.route('**/api/jobs', r => { sent.push(r.request().postDataJSON()); r.fulfill({ status: 202, json: { jobId: 'j9', status: '/api/jobs/j9', events: '/api/jobs/j9/events' } }); });
+    await p1.route('**/api/jobs/j9', r => r.fulfill({ json: { jobId: 'j9', sequence: 1, status: 'running' } }));
+    await p1.goto(server.resolvedUrls.local[0]); await p1.waitForFunction(() => document.querySelector('video')?.readyState >= 2); await p1.getByRole('button', { name: 'Touch · Draw' }).click(); await p1.mouse.click(110, 270);
+    for (let i = 0; i < 80 && !sent.length; i++) await p1.waitForTimeout(100);
+    assert.equal(sent.length, 1); assert.equal(sent[0].imageSearch, true); await c1.close();
+    // server without a key: the switch is disabled and says why
+    available = false; const c2 = await newCtx({ viewport: { width: 390, height: 780 }, userAgent: IPHONE }); await c2.addInitScript(camStub); const p2 = await c2.newPage();
+    await p2.route('**/api/image-search/status', r => r.fulfill({ json: { available: false } }));
+    await p2.goto(server.resolvedUrls.local[0]); await p2.getByRole('button', { name: 'Settings' }).click(); await p2.getByText('Advanced').click();
+    assert.equal(await p2.getByRole('switch', { name: 'Image search (Google)' }).isDisabled(), true); await p2.getByText(/GOOGLE_VISION_API_KEY/).waitFor(); await c2.close();
+  }
   assert.deepEqual(errors, []);
   console.log('PASS: star gate before camera, English default, Korean switch, compact card, filter bar, details behind a toggle, swipe/tap close, hidden scrollbars, no attribution on camera, person card without play-price wording, outline persists when the object is lost or the phone turns and returns, no star prompt on phones or the app shell, real star actions only after a tap (signed-in gh, on-screen sign-in, Settings on a phone), pairing QR switchable between the app link and the browser link, outline held without motion sensors, live work state (name first, then the real agent actions).');
 } finally { await browser?.close(); await server.close(); }
