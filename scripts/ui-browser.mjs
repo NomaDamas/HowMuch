@@ -168,6 +168,22 @@ try {
     await p.waitForFunction(old => document.querySelector('img')?.getAttribute('src') === old, appQr);
     await c.close();
   }
+  // 11. No motion sensors (a laptop): losing the track must not make the cut-out vanish at once; it is held, then released
+  {
+    const c = await newCtx({ viewport: { width: 390, height: 780 } });
+    await c.addInitScript(() => { try { localStorage.setItem('howmuch-starred', '1'); } catch {} window.__hide = false; const cv = document.createElement('canvas'); cv.width = 480; cv.height = 720; const g = cv.getContext('2d');
+      setInterval(() => { g.fillStyle = '#384858'; g.fillRect(0, 0, 480, 720); if (window.__hide) return; g.fillStyle = '#c9d4de'; g.fillRect(120, 250, 150, 150); }, 100);
+      Object.defineProperty(navigator.mediaDevices, 'getUserMedia', { value: async () => cv.captureStream(10) }); });
+    const p = await c.newPage();
+    await p.route('**/agent/segment', r => r.fulfill({ json: { selections: [sel(.25, .33, 'product')], selection: sel(.25, .33, 'product'), model: 'stub' } }));
+    await p.route('**/api/research', () => {});   // research never answers: only the outline behaviour is under test
+    await p.goto(server.resolvedUrls.local[0]); await p.getByRole('button', { name: 'Touch · Draw' }).click(); await p.mouse.click(110, 270);
+    await p.waitForFunction(() => document.querySelectorAll('.contours path').length >= 1);
+    await p.waitForTimeout(500); await p.evaluate(() => { window.__hide = true; });
+    await p.waitForFunction(() => document.querySelectorAll('.contours.ghost path').length >= 1, null, { timeout: 15000 });   // held, not vanished
+    await p.waitForFunction(() => document.querySelectorAll('.contours.ghost path').length === 0, null, { timeout: 20000 });  // released after a few seconds
+    await c.close();
+  }
   assert.deepEqual(errors, []);
-  console.log('PASS: star gate before camera, English default, Korean switch, compact card, filter bar, details behind a toggle, swipe/tap close, hidden scrollbars, no attribution on camera, person card without play-price wording, outline persists when the object is lost or the phone turns and returns, no star prompt on phones or the app shell, real star actions only after a tap (signed-in gh, on-screen sign-in, Settings on a phone), pairing QR switchable between the app link and the browser link.');
+  console.log('PASS: star gate before camera, English default, Korean switch, compact card, filter bar, details behind a toggle, swipe/tap close, hidden scrollbars, no attribution on camera, person card without play-price wording, outline persists when the object is lost or the phone turns and returns, no star prompt on phones or the app shell, real star actions only after a tap (signed-in gh, on-screen sign-in, Settings on a phone), pairing QR switchable between the app link and the browser link, outline held without motion sensors.');
 } finally { await browser?.close(); await server.close(); }

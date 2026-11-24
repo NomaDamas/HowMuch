@@ -34,6 +34,15 @@ phone <--GET /api/jobs/:id (poll; resumable after background)-- result with evid
   search tool read, so no scraper is exposed to bans.
 * **Currency:** non-KRW listings are converted with ECB rates, and say so in their evidence.
 
+## Speed
+
+Measured on real runs (hosted web search, 3 parallel agents): one agent takes 50-100 s, a full result 65-90 s. What helped:
+* **Early name** (about 7-10 s): a search-free vision call names the object while prices are researched; it travels through the job events, so phones polling a job see it too.
+* **Smaller pictures** (scene 768 px, cut-out 512 px): about 18 % faster per call.
+* **Search budget 3 and `search_context_size: low`** (both overridable with `HOWMUCH_AGENT_BUDGET`, `HOWMUCH_AGENT_CONTEXT`): about 10-15 % faster with no visible accuracy loss in a small test. `max_tool_calls` is rejected by the proxy used in development.
+* Early return when two agents agree, stragglers cancelled.
+What did **not** help: a 10 s straggler wait instead of 25 s (fewer agreeing answers), and `reasoning.effort=low` (about 22 % faster but cheaper, less accurate prices). The result quality of identical runs varies a lot (1 to 4 exact results out of 4), so single timings are noisy. Lower latency needs a faster model or endpoint, caching, or showing the first agent's answer as a preliminary result.
+
 ## Phones and background
 
 The app only submits a job and polls it (`HttpResearchProvider.pollJob`); the server keeps researching while the app is

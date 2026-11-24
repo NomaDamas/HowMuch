@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { agentResearch, consensusIdentity, parseAgentOutput, runAgent, buildAgentPrompt, summarizeListings } from './agent-research.mjs';
+import { agentResearch, consensusIdentity, parseAgentOutput, runAgent, buildAgentPrompt, summarizeListings, quickName } from './agent-research.mjs';
 import { assertResearchEnvelope } from './research-contract.mjs';
 
 const img = 'data:image/png;base64,AAAA';
@@ -90,7 +90,7 @@ test('runAgent sends both images with the hosted web_search tool', async () => {
   const fetchImpl = async (url, init) => { sent = { url, body: JSON.parse(init.body) };
     return { ok: true, json: async () => ({ output: [{ type: 'message', content: [{ type: 'output_text', text: '{"kind":"product","level":"exact","identity":{"brand":"B","model":"M"},"offers":[]}' }] }] }) }; };
   const r = await runAgent('f', [img, img], { env: { VLM_API_KEY: 'k', VLM_BASE_URL: 'https://p.example/v1', VLM_MODEL: 'm' }, fetchImpl });
-  assert.equal(sent.url, 'https://p.example/v1/responses'); assert.deepEqual(sent.body.tools, [{ type: 'web_search' }]);
+  assert.equal(sent.url, 'https://p.example/v1/responses'); assert.deepEqual(sent.body.tools, [{ type: 'web_search', search_context_size: 'low' }]);
   assert.equal(sent.body.input[0].content.filter(c => c.type === 'input_image').length, 2); assert.equal(r.identity.brand, 'B');
 });
 
@@ -101,4 +101,29 @@ test('the chosen language reaches the agents and the follow-up text', async () =
   assert.equal(lang, 'Korean'); assert.match(r.followup.prompt, /모델명/);
   const en = await agentResearch({ ...body, locale: 'en-US' }, { agents: 1, graceMs: 5, runAgent: (f, i, o) => { lang = o.language; return unknown([offer('https://a.co.kr/p/1', 100000, 'x')])(); } });
   assert.equal(lang, 'English'); assert.match(en.followup.prompt, /model name/i);
+});
+
+test('speed defaults: low search context and a small search budget are sent with every agent call', async () => {
+  let sent; const fetchImpl = async (u, init) => { sent = JSON.parse(init.body); return { ok: true, json: async () => ({ output: [] }) }; };
+  await runAgent('f', [img, img], { env: { VLM_API_KEY: 'k', VLM_BASE_URL: 'https://p.example/v1', VLM_MODEL: 'm' }, fetchImpl });
+  assert.equal(sent.tools[0].search_context_size, 'low'); assert.match(sent.input[0].content[0].text, /at most 3 searches/);
+  await runAgent('f', [img, img], { env: { VLM_API_KEY: 'k', VLM_BASE_URL: 'https://p.example/v1', VLM_MODEL: 'm', HOWMUCH_AGENT_CONTEXT: 'high', HOWMUCH_AGENT_BUDGET: '5', HOWMUCH_AGENT_EFFORT: 'low' }, fetchImpl });
+  assert.equal(sent.tools[0].search_context_size, 'high'); assert.match(sent.input[0].content[0].text, /at most 5 searches/); assert.deepEqual(sent.reasoning, { effort: 'low' });
+});
+test('the object name is announced right away, before the slow price research finishes', async () => {
+  const events = []; let release;
+  const slow = () => new Promise(res => { release = res; });
+  const p = agentResearch(body, { agents: 1, graceMs: 5, onPhase: e => events.push(e), quickName: async () => ({ kind: 'product', name: 'Nintendo Switch OLED' }), runAgent: slow });
+  await new Promise(r => setTimeout(r, 30));
+  assert.ok(events.some(e => e.candidate?.name === 'Nintendo Switch OLED'), 'name shown while research is still running');
+  release(out({ offers: [offer('https://a.co.kr/p/1', 446310)] })); await p;
+});
+test('quickName reads the picture without web search and understands a person', async () => {
+  let sent; const mk = text => async (u, init) => { sent = { u, body: JSON.parse(init.body) }; return { ok: true, json: async () => ({ choices: [{ message: { content: text } }] }) }; };
+  const env = { VLM_API_KEY: 'k', VLM_BASE_URL: 'https://p.example/v1', VLM_MODEL: 'm' };
+  assert.deepEqual(await quickName([img], { env, fetchImpl: mk('{"kind":"product","name":"AirPods Pro"}') }), { kind: 'product', name: 'AirPods Pro' });
+  assert.ok(sent.u.endsWith('/chat/completions')); assert.ok(!sent.body.tools, 'no search tool in the fast call');
+  assert.deepEqual(await quickName([img], { env, fetchImpl: mk('{"kind":"person"}') }), { kind: 'person' });
+  assert.equal(await quickName([img], { env, fetchImpl: async () => ({ ok: false }) }), null);
+  assert.equal(await quickName([img], { env: {} }), null);
 });

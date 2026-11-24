@@ -17,6 +17,9 @@ import './app.css';
 import {t,useLang,locale} from './lib/i18n.js';
 import {ItemBar,Hud,Leader,Detail,ItemsSheet,SettingsSheet,StarGate,StarSheet,shouldAskStar,nameOf,stateText,priceOf} from './ui.jsx';
 
+// The research agents read the pictures at a few hundred pixels anyway; sending camera-sized images only adds upload and vision time.
+const shrinkCanvas=(c,max)=>{const k=Math.min(1,max/Math.max(c.width,c.height));if(k>=1)return c;const o=document.createElement('canvas');o.width=Math.round(c.width*k);o.height=Math.round(c.height*k);o.getContext('2d').drawImage(c,0,0,o.width,o.height);return o};
+const shrinkDataUrl=(url,max)=>new Promise(res=>{const i=new Image();i.onload=()=>{try{const c=document.createElement('canvas');c.width=i.naturalWidth;c.height=i.naturalHeight;c.getContext('2d').drawImage(i,0,0);const out=shrinkCanvas(c,max);res(out===c?url:out.toDataURL('image/png'))}catch{res(url)}};i.onerror=()=>res(url);i.src=url});
 const MIN_AREA=.003; // below ~0.3% of the frame a selection is a sliver (a cable, an edge), not an object
 const MAX_JOBS=4;
 // Compare the captured scene to the original mask's interior samples, not its
@@ -42,6 +45,9 @@ function App(){
  useLang();
  const [list,setList]=useState(false),[gyro,setGyro]=useState(false),[filter,setFilter]=useState(null),[gate,setGate]=useState(shouldAskStar),[starSheet,setStarSheet]=useState(false);
  useEffect(()=>{if(gyroSupported()&&!needsGyroPermission())setGyro(true)},[]);
+ const motionAsked=useRef(false);
+ // iOS only grants motion access from a tap: ask on the first tap anywhere, so spatial memory is on without hunting for a button.
+ function askMotion(){if(motionAsked.current||gyro||!needsGyroPermission())return;motionAsked.current=true;requestGyro().then(ok=>{if(ok)setGyro(true)})}
  async function toggleGyro(){if(gyro){setGyro(false);return}setGyro(await requestGyro());}
  const jobs=useRef(new Map()),epoch=useRef(0),sequence=useRef(0),gesture=useRef(null),fade=useRef(),hold=useRef(),since=useRef(0);
  const [items,redraw]=useState([]),[size,setSize]=useState({width:1,height:1}),[measured,setMeasured]=useState({}),[ready,setReady]=useState(false);
@@ -72,7 +78,7 @@ function App(){
    const start=performance.now(); o.phase='identifying'; o.error=null; o.result=null; sync();
    const onPhase=e=>{if(live()&&e.phase==='researching'){o.phase='loading';o.candidate=e.candidate;sync()}};
    try{
-    const request=o.original ?? {imageDataUrl:source.toDataURL('image/jpeg',.85),cutoutDataUrl:o.selection.cutoutDataUrl||cutout(source,o.selection),selection:{x:o.selection.x,y:o.selection.y,width:o.selection.width,height:o.selection.height,polygon:o.selection.polygon},locale:locale()};
+    const request=o.original ?? {imageDataUrl:shrinkCanvas(source,768).toDataURL('image/jpeg',.8),cutoutDataUrl:await shrinkDataUrl(o.selection.cutoutDataUrl||cutout(source,o.selection),512),selection:{x:o.selection.x,y:o.selection.y,width:o.selection.width,height:o.selection.height,polygon:o.selection.polygon},locale:locale()};
     const r=await new HttpResearchProvider(providerConfig().researchEndpoint,providerConfig().jobsEndpoint).research({...request,...(labelDataUrl&&{labelDataUrl}),...(modelHint&&{modelHint})},o.controller.signal,onPhase);
     o.original=(r.status==='followup_required'||r.pricingMode==='type_estimate')?request:null;
     if(!live())return;
@@ -192,7 +198,7 @@ function App(){
  const shown=filter==null?visible:visible.filter(x=>x.o.id===filter);
   const modeHint=mode==='auto'?t('hint.auto'):t('hint.draw');
   const pill=cameraError||hint||(ready&&items.length===0?modeHint:'');
-  return <main className="app"><section className="camera" ref={stage} aria-label={t('cam.label')}>
+  return <main className="app"><section className="camera" ref={stage} aria-label={t('cam.label')} onClickCapture={askMotion}>
    <video ref={v} playsInline muted autoPlay/><div className="shade"/>
    <canvas ref={pen} className={'draw-layer '+(mode==='draw'?'enabled':'')} aria-label={t('cam.draw')} onPointerDown={begin} onPointerMove={move} onPointerUp={e=>end(e)} onPointerCancel={e=>end(e,true)} onLostPointerCapture={e=>end(e,true)}/>
    <div className="topbar"><b className="brand"><i><ScanLine size={18}/></i>HowMuch</b><div className="actions">

@@ -4,6 +4,6 @@ export function jobStore(now=Date.now){
  return {
  start(owner,run){trim();if(jobs.size>=32)return null;const id=randomUUID(),job={owner,listeners:new Set(),events:[]};jobs.set(id,job);
  const emit=(status,extra)=>{const e={jobId:id,sequence:job.events.length+1,status,...extra};job.events.push(e);for(const fn of job.listeners)fn(e)};
- emit('queued');Promise.resolve().then(()=>{emit('running');return run()}).then(result=>{job.finished=now();emit('completed',{result})},e=>{if(process.env.HOWMUCH_DEBUG)console.error('[job failed]',e?.message,e?.status);job.finished=now();emit('failed',{error:'research_failed'})});return id;},
+ emit('queued');Promise.resolve().then(()=>{emit('running');return run(extra=>{if(!job.finished)emit('running',extra)})}).then(result=>{job.finished=now();emit('completed',{result})},e=>{if(process.env.HOWMUCH_DEBUG)console.error('[job failed]',e?.message,e?.status);job.finished=now();emit('failed',{error:'research_failed'})});return id;},
  get(id,owner){trim();const j=jobs.get(id);return j?.owner===owner?j:null}};
 }

@@ -44,7 +44,8 @@ export async function researchAgent(input, signal, onPhase) {
     const event=JSON.parse(line);
     if(event.error)throw Error('research_failed');
     if(event.result){result=validated(event.result);return}
-    if(event.phase==='researching'&&!researching&&!result){
+    // The first 'researching' event starts the phase; later ones may carry the early object name and must pass through too.
+    if(event.phase==='researching'&&!result&&(!researching||event.candidate)){
       researching=true;
       const candidate=event.candidate;
       const safe=candidate && typeof candidate.name==='string' && !candidate.name.startsWith('data:') ? {name:candidate.name.slice(0,240),...(Number.isFinite(candidate.confidence)?{confidence:candidate.confidence}:{})}:undefined;
@@ -135,7 +136,7 @@ export function gateway({phoneOrigin, research=researchAgent, agentOrigin='http:
       }
       if(!isValidResearchInput(input))return json(res,400,{error:'image_and_selection_required'});
       if(route==='/api/jobs') {
-        const id=jobs.start(owner,()=>run(input)); if(!id)return json(res,429,{error:'job_capacity'});
+        const id=jobs.start(owner,progress=>run(input,undefined,e=>{if(e?.candidate)progress({candidate:e.candidate})})); if(!id)return json(res,429,{error:'job_capacity'});
         return json(res,202,{jobId:id,events:'/api/jobs/'+id+'/events',status:'/api/jobs/'+id});
       }
       const streamed = req.headers.accept?.includes('application/x-ndjson');

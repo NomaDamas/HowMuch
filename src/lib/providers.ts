@@ -43,13 +43,14 @@ export class HttpResearchProvider implements ResearchAgentProvider {
     try { sessionStorage.setItem('howmuch-job-' + jobId, String(Date.now())); } catch { /* storage may be unavailable */ }
     onPhase?.({ phase: 'researching' });
     const deadline = Date.now() + 300000;
-    let delay = 1200;
+    let delay = 1200, lastName = '';
     while (Date.now() < deadline) {
       await new Promise<void>((resolve, reject) => { const t = setTimeout(resolve, delay); signal?.addEventListener('abort', () => { clearTimeout(t); reject(new DOMException('aborted', 'AbortError')); }, { once: true }); });
       const r = await fetch(status, { signal });
       if (r.status === 404) throw new Error('가격 조사 작업을 찾을 수 없습니다.');
       if (!r.ok) { delay = Math.min(4000, delay * 1.5); continue; } // transient network loss while backgrounded: keep polling
-      const event = await r.json() as { status: string; result?: unknown };
+      const event = await r.json() as { status: string; result?: unknown; candidate?: { name: string } };
+      if (event.status === 'running' && event.candidate && event.candidate.name !== lastName) { lastName = event.candidate.name; onPhase?.({ phase: 'researching', candidate: event.candidate }); }
       if (event.status === 'completed' && event.result) return event.result;
       if (event.status === 'failed') throw new Error('가격 조사에 실패했습니다.');
       delay = Math.min(2500, delay + 250);
