@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { agentResearch, consensusIdentity, parseAgentOutput, runAgent, buildAgentPrompt, summarizeListings } from './agent-research.mjs';
+import { agentResearch, researchCache, consensusIdentity, parseAgentOutput, runAgent, buildAgentPrompt, summarizeListings, quickName } from './agent-research.mjs';
 import { assertResearchEnvelope } from './research-contract.mjs';
 
 const img = 'data:image/png;base64,AAAA';
@@ -90,6 +90,97 @@ test('runAgent sends both images with the hosted web_search tool', async () => {
   const fetchImpl = async (url, init) => { sent = { url, body: JSON.parse(init.body) };
     return { ok: true, json: async () => ({ output: [{ type: 'message', content: [{ type: 'output_text', text: '{"kind":"product","level":"exact","identity":{"brand":"B","model":"M"},"offers":[]}' }] }] }) }; };
   const r = await runAgent('f', [img, img], { env: { VLM_API_KEY: 'k', VLM_BASE_URL: 'https://p.example/v1', VLM_MODEL: 'm' }, fetchImpl });
-  assert.equal(sent.url, 'https://p.example/v1/responses'); assert.deepEqual(sent.body.tools, [{ type: 'web_search' }]);
+  assert.equal(sent.url, 'https://p.example/v1/responses'); assert.deepEqual(sent.body.tools, [{ type: 'web_search', search_context_size: 'low' }]);
   assert.equal(sent.body.input[0].content.filter(c => c.type === 'input_image').length, 2); assert.equal(r.identity.brand, 'B');
+});
+
+test('the chosen language reaches the agents and the follow-up text', async () => {
+  assert.match(buildAgentPrompt('f', '', 'Korean'), /in Korean/); assert.match(buildAgentPrompt('f', '', 'English'), /in English/);
+  let lang; const unknown = o => agent({ level: 'type', identity: ident({ brand: '', model: '', confidence: .3 }), type: { name: 'earbuds', attributes: [] }, offers: o });
+  const r = await agentResearch({ ...body, locale: 'ko-KR' }, { agents: 1, graceMs: 5, runAgent: (f, i, o) => { lang = o.language; return unknown([offer('https://a.co.kr/p/1', 100000, 'x')])(); } });
+  assert.equal(lang, 'Korean'); assert.match(r.followup.prompt, /모델명/);
+  const en = await agentResearch({ ...body, locale: 'en-US' }, { agents: 1, graceMs: 5, runAgent: (f, i, o) => { lang = o.language; return unknown([offer('https://a.co.kr/p/1', 100000, 'x')])(); } });
+  assert.equal(lang, 'English'); assert.match(en.followup.prompt, /model name/i);
+});
+
+test('speed defaults: low search context and a small search budget are sent with every agent call', async () => {
+  let sent; const fetchImpl = async (u, init) => { sent = JSON.parse(init.body); return { ok: true, json: async () => ({ output: [] }) }; };
+  await runAgent('f', [img, img], { env: { VLM_API_KEY: 'k', VLM_BASE_URL: 'https://p.example/v1', VLM_MODEL: 'm' }, fetchImpl });
+  assert.equal(sent.tools[0].search_context_size, 'low'); assert.match(sent.input[0].content[0].text, /at most 3 searches/);
+  await runAgent('f', [img, img], { env: { VLM_API_KEY: 'k', VLM_BASE_URL: 'https://p.example/v1', VLM_MODEL: 'm', HOWMUCH_AGENT_CONTEXT: 'high', HOWMUCH_AGENT_BUDGET: '5', HOWMUCH_AGENT_EFFORT: 'low' }, fetchImpl });
+  assert.equal(sent.tools[0].search_context_size, 'high'); assert.match(sent.input[0].content[0].text, /at most 5 searches/); assert.deepEqual(sent.reasoning, { effort: 'low' });
+});
+test('the object name is announced right away, before the slow price research finishes', async () => {
+  const events = []; let release;
+  const slow = () => new Promise(res => { release = res; });
+  const p = agentResearch(body, { agents: 1, graceMs: 5, onPhase: e => events.push(e), quickName: async () => ({ kind: 'product', name: 'Nintendo Switch OLED' }), runAgent: slow });
+  await new Promise(r => setTimeout(r, 30));
+  assert.ok(events.some(e => e.candidate?.name === 'Nintendo Switch OLED'), 'name shown while research is still running');
+  release(out({ offers: [offer('https://a.co.kr/p/1', 446310)] })); await p;
+});
+test('quickName reads the picture without web search and understands a person', async () => {
+  let sent; const mk = text => async (u, init) => { sent = { u, body: JSON.parse(init.body) }; return { ok: true, json: async () => ({ choices: [{ message: { content: text } }] }) }; };
+  const env = { VLM_API_KEY: 'k', VLM_BASE_URL: 'https://p.example/v1', VLM_MODEL: 'm' };
+  assert.deepEqual(await quickName([img], { env, fetchImpl: mk('{"kind":"product","name":"AirPods Pro"}') }), { kind: 'product', name: 'AirPods Pro' });
+  assert.ok(sent.u.endsWith('/chat/completions')); assert.ok(!sent.body.tools, 'no search tool in the fast call');
+  assert.deepEqual(await quickName([img], { env, fetchImpl: mk('{"kind":"person"}') }), { kind: 'person' });
+  assert.equal(await quickName([img], { env, fetchImpl: async () => ({ ok: false }) }), null);
+  assert.equal(await quickName([img], { env: {} }), null);
+});
+
+const sse = events => { const text = events.map(e => 'event: ' + e.type + '\ndata: ' + JSON.stringify(e) + '\n\n').join(''); const bytes = new TextEncoder().encode(text);
+  // split mid-event on purpose: a real network chunk boundary can fall anywhere
+  const half = Math.floor(bytes.length / 2); return { ok: true, headers: { get: () => 'text/event-stream' }, body: new ReadableStream({ start(c) { c.enqueue(bytes.slice(0, half)); c.enqueue(bytes.slice(half)); c.close(); } }) }; };
+test('streaming: the agent\'s real searches, pages and sources are reported while it works, then the final answer is parsed', async () => {
+  const final = { output: [{ type: 'message', content: [{ type: 'output_text', text: '{"kind":"product","level":"exact","identity":{"brand":"Nintendo","model":"Switch OLED"},"offers":[]}' }] }] };
+  const fetchImpl = async (u, init) => { assert.equal(JSON.parse(init.body).stream, true);
+    return sse([{ type: 'response.output_item.added', item: { type: 'web_search_call', action: { type: 'search', query: 'Switch OLED 최저가' } } },
+      { type: 'response.output_item.done', item: { type: 'web_search_call', action: { type: 'search', query: 'Switch OLED 최저가' } } },
+      { type: 'response.output_item.added', item: { type: 'web_search_call', action: { type: 'open_page', url: 'https://www.enuri.com/x/1' } } },
+      { type: 'response.output_text.annotation.added', annotation: { url: 'https://prod.danawa.com/info/?pcode=1' } },
+      { type: 'response.completed', response: final }]); };
+  const steps = []; const r = await runAgent('f', [img, img], { env: { VLM_API_KEY: 'k', VLM_BASE_URL: 'https://p.example/v1', VLM_MODEL: 'm' }, fetchImpl, onStep: s => steps.push(s) });
+  assert.deepEqual(steps, [{ kind: 'search', text: 'Switch OLED 최저가' }, { kind: 'open', text: 'enuri.com' }, { kind: 'cite', text: 'prod.danawa.com' }], 'deduplicated, hostnames only');
+  assert.equal(r.identity.brand, 'Nintendo');
+});
+test('without a step listener (or with streaming off) the plain JSON response is used', async () => {
+  let sent; const fetchImpl = async (u, init) => { sent = JSON.parse(init.body); return { ok: true, json: async () => ({ output: [] }) }; };
+  await runAgent('f', [img], { env: { VLM_API_KEY: 'k', VLM_BASE_URL: 'https://p.example/v1', VLM_MODEL: 'm' }, fetchImpl }); assert.equal(sent.stream, undefined);
+  await runAgent('f', [img], { env: { VLM_API_KEY: 'k', VLM_BASE_URL: 'https://p.example/v1', VLM_MODEL: 'm', HOWMUCH_AGENT_STREAM: '0' }, fetchImpl, onStep() {} }); assert.equal(sent.stream, undefined);
+  await assert.rejects(runAgent('f', [img], { env: { VLM_API_KEY: 'k', VLM_BASE_URL: 'https://p.example/v1', VLM_MODEL: 'm' }, fetchImpl: async () => sse([{ type: 'response.created' }]), onStep() {} }), /agent_stream_incomplete/);
+});
+test('research reports progress: object identified, each agent finishing, the comparison', async () => {
+  const phases = [];
+  const runs = [agent({ offers: [offer('https://a.co.kr/p/1', 446310)] }), agent({ offers: [offer('https://b.co.kr/p/2', 450000)] })]; let n = 0;
+  await agentResearch(body, { agents: 2, graceMs: 20, onPhase: e => phases.push(e), quickName: async () => ({ kind: 'product', name: 'Nintendo Switch OLED' }),
+    runAgent: (f, i, o) => { o.onStep({ kind: 'search', text: 'q' + n }); return runs[n++](); } });
+  const steps = phases.filter(e => e.phase === 'progress').map(e => e.step);
+  assert.ok(steps.some(s => s.kind === 'identified' && s.text === 'Nintendo Switch OLED'));
+  assert.equal(steps.filter(s => s.kind === 'search').length, 2); assert.equal(steps.filter(s => s.kind === 'agentDone').length >= 2, true);
+  assert.ok(steps.some(s => s.kind === 'compare' && s.n === 2)); assert.ok(steps.filter(s => s.kind === 'search').every(s => Number.isInteger(s.agent)));
+});
+
+test('preliminary price: the first agent\'s rough median is reported before the final answer', async () => {
+  const phases = []; let n = 0;
+  const fns = [agent({ offers: [offer('https://a.co.kr/p/1', 440000), offer('https://a.co.kr/p/2', 450000), offer('https://a.co.kr/p/3', 460000)] }), async () => { await new Promise(r => setTimeout(r, 60)); return out({ offers: [offer('https://b.co.kr/p/9', 455000)] }); }];
+  await agentResearch(body, { agents: 2, graceMs: 200, onPhase: e => phases.push(e), quickName: async () => null, runAgent: () => fns[n++]() });
+  const p = phases.find(e => e.phase === 'preliminary'); assert.ok(p, 'preliminary event'); assert.equal(p.price, 450000); assert.equal(p.count, 3);
+});
+
+test('cache: a verified exact result is reused when the same item is named again, and never for other models', async () => {
+  researchCache.clear(); const env = { HOWMUCH_CACHE_TTL_MS: '60000' };
+  const first = await agentResearch(body, { env, agents: 2, graceMs: 30, quickName: async () => null, runAgent: (() => { let n = 0; const f = [agent({ offers: [offer('https://a.co.kr/p/1', 446310)] }), agent({ offers: [offer('https://b.co.kr/p/2', 450000)] })]; return () => f[n++](); })() });
+  assert.equal(first.status, 'complete');
+  const phases = []; let called = 0;
+  const hit = await agentResearch(body, { env, agents: 2, graceMs: 30, onPhase: e => phases.push(e), quickName: async () => ({ kind: 'product', name: 'Nintendo Switch OLED white' }), runAgent: () => { called++; return new Promise(() => {}); } });
+  assert.equal(hit.status, 'complete'); assert.equal(hit.offers.length, first.offers.length); assert.ok(phases.some(e => e.step?.kind === 'cache'));
+  const miss = await agentResearch(body, { env, agents: 2, graceMs: 30, quickName: async () => ({ kind: 'product', name: 'Nintendo Switch Lite' }), runAgent: (() => { let n = 0; const f = [agent({ offers: [] }), agent({ offers: [] })]; return () => f[n++](); })() });
+  assert.notEqual(miss.status, 'complete'); researchCache.clear();
+});
+
+test('cache key ignores colour/set words so "Switch OLED Model White Set" is found by "Nintendo Switch OLED"', async () => {
+  researchCache.clear(); const env = { HOWMUCH_CACHE_TTL_MS: '60000' };
+  const r = await agentResearch(body, { env, agents: 2, graceMs: 30, quickName: async () => null, runAgent: (() => { let n = 0; const f = [agent({ offers: [offer('https://a.co.kr/p/1', 446310)] }), agent({ offers: [offer('https://b.co.kr/p/2', 450000)] })]; return () => f[n++](); })() });
+  assert.equal(r.status, 'complete');
+  assert.ok(researchCache.find('Nintendo Switch OLED', env), 'found without the variant words'); assert.equal(researchCache.find('Nintendo Switch Lite', env), null); assert.equal(researchCache.find('Switch', env), null); researchCache.clear();
 });

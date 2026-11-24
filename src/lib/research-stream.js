@@ -8,7 +8,7 @@ export async function readResearch(response, onPhase) {
     const event=JSON.parse(line);
     if (event.error) throw Error('가격 조사에 실패했습니다: '+String(event.error).slice(0,100));
     if (event.result) result=event.result;
-    if (event.phase==='researching' || event.phase==='identifying') onPhase?.(event);
+    if (event.phase==='researching' || event.phase==='identifying' || event.phase==='progress' || event.phase==='preliminary') onPhase?.(event);
   };
   try {
     while(true){const next=await reader.read();if(next.done)break;

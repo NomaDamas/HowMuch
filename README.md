@@ -20,6 +20,10 @@ Open **http://localhost:5173**. The launcher starts the loopback research API (:
 
 HowMuch never stars repositories silently during `git clone`. After `npm install`, if you are in an interactive terminal with an authenticated GitHub CLI, it asks once `[y/N]` and stars only on an explicit `y` (`HOWMUCH_NO_STAR_PROMPT=1` or CI disables the prompt). You can also use the in-app **GitHub에서 HowMuch Star 누르기** link or `HOWMUCH_CONFIRM_STAR=1 npm run star`. No credential is stored by this project.
 
+## Install with an AI agent
+
+Paste this into Claude Code, Codex or any coding agent: *"Clone https://github.com/NomaDamas/HowMuch.git, follow AGENTS.md, and run the demo."* The repository's `AGENTS.md` makes the agent tell you it will star the project with `gh` (it skips this if you say no), then install and start everything. Starring is also offered on the desktop web app's first screen and, in a terminal, by `npm install`, `npm run demo` and `npm run dev` (`Star HowMuch? [Y/n]`, Enter stars at once; `npm run star` asks on demand). Phones and the app shells never show it on load.
+
 ## Phone on the same Wi-Fi
 
 1. Stop the desktop launcher. Run `npm run demo:phone` (requires OpenSSL with `-addext`; set `HOWMUCH_LAN_IP` if your machine has multiple adapters). It builds the frontend, generates a private local CA and a seven-day server certificate under ignored `.howmuch/tls`, and serves **only the built app** over HTTPS on the Wi-Fi address, port 8443. The desktop developer server and agent remain loopback-only.

@@ -1,6 +1,6 @@
 import React,{useEffect,useLayoutEffect,useRef,useState} from 'react';
 import {createRoot} from 'react-dom/client';
-import {ScanLine,Settings,Hand,Crosshair,ChevronRight,Camera,ExternalLink,Compass} from 'lucide-react';
+import {ScanLine,Settings,Hand,Crosshair,Camera,List,Compass} from 'lucide-react';
 import Pairing from './Pairing.jsx';
 import {previewTemplate,captureMaskedSignature} from './lib/xr-target.js';
 import WorldAnchorButton from './WorldAnchorButton.jsx';
@@ -13,10 +13,14 @@ import {recordAnonymousEvent} from './lib/telemetry.js';
 import {trackPreview} from './lib/preview-track.js';
 import GhostLayer from './GhostLayer.jsx';
 import {gyroSupported,needsGyroPermission,requestGyro} from './lib/gyro-world.js';
-import './styles.css';
-import './ui-v2.css';
-import './ui-v3.css';
+import './app.css';
+import {t,useLang,locale} from './lib/i18n.js';
+import {ItemBar,Hud,Leader,Detail,ItemsSheet,SettingsSheet,StarGate,StarSheet,shouldAskStar,nameOf,stateText,priceOf} from './ui.jsx';
 
+// The research agents read the pictures at a few hundred pixels anyway; sending camera-sized images only adds upload and vision time.
+const shrinkCanvas=(c,max)=>{const k=Math.min(1,max/Math.max(c.width,c.height));if(k>=1)return c;const o=document.createElement('canvas');o.width=Math.round(c.width*k);o.height=Math.round(c.height*k);o.getContext('2d').drawImage(c,0,0,o.width,o.height);return o};
+const shrinkDataUrl=(url,max)=>new Promise(res=>{const i=new Image();i.onload=()=>{try{const c=document.createElement('canvas');c.width=i.naturalWidth;c.height=i.naturalHeight;c.getContext('2d').drawImage(i,0,0);const out=shrinkCanvas(c,max);res(out===c?url:out.toDataURL('image/png'))}catch{res(url)}};i.onerror=()=>res(url);i.src=url});
+const MIN_AREA=.003; // below ~0.3% of the frame a selection is a sliver (a cable, an edge), not an object
 const MAX_JOBS=4;
 // Compare the captured scene to the original mask's interior samples, not its
 // bounding rectangle. A look-alike or textureless lost target cannot regain a price by IoU alone.
@@ -28,11 +32,8 @@ function appearanceCost(ref,frame,s){
  return e[Math.floor(e.length*.65)];
 }
 const canCapture=video=>!!(video?.videoWidth&&video.videoHeight&&video.readyState>=2&&video.srcObject?.getVideoTracks().some(t=>t.readyState==='live'&&t.enabled&&!t.muted));
-const money=(n,c)=>Number.isFinite(n)&&c?new Intl.NumberFormat('ko-KR',{style:'currency',currency:c}).format(n):'가격 미확인';
-const clock=t=>t?new Date(t).toLocaleString('ko-KR'):'';
 const person=s=>/^(person|human|사람)$/i.test(String(s.kind||s.category||s.label||s.type||'').trim())||s.isPerson===true;
 function funPref(){try{return localStorage.getItem('howmuch-fun')!=='off'}catch{return true}}
-const vibes=['오늘의 코디 점수 만점','주인공 아우라','카페 사장님 룩','출근길 패셔니스타','주말 여행 모드','편안한 힙스터 감성'];
 function preferred(){try{return localStorage.getItem('howmuch-mode')==='draw'?'draw':'auto'}catch{return 'auto'}}
 function note(event){recordAnonymousEvent(event);try{
  const key='howmuch-usage-v1', day=new Date().toLocaleDateString('sv-SE'), prev=JSON.parse(localStorage.getItem(key)||'{}'), days=prev.days||{};
@@ -41,9 +42,13 @@ function note(event){recordAnonymousEvent(event);try{
 function App(){
  const v=useRef(null),stage=useRef(null),pen=useRef(null),stream=useRef(null),alive=useRef(true),cameraJob=useRef(0);
  const segmentController=useRef(null),ignored=useRef([]);
- const [list,setList]=useState(false),[gyro,setGyro]=useState(false);
+ useLang();
+ const [list,setList]=useState(false),[gyro,setGyro]=useState(false),[filter,setFilter]=useState(null),[gate,setGate]=useState(shouldAskStar),[starSheet,setStarSheet]=useState(false);
  useEffect(()=>{if(gyroSupported()&&!needsGyroPermission())setGyro(true)},[]);
- async function toggleGyro(){if(gyro){setGyro(false);return}setGyro(await requestGyro());setHint('휴대폰을 돌려도 물체 위치를 기억합니다.')}
+ const motionAsked=useRef(false);
+ // iOS only grants motion access from a tap: ask on the first tap anywhere, so spatial memory is on without hunting for a button.
+ function askMotion(){if(motionAsked.current||gyro||!needsGyroPermission())return;motionAsked.current=true;requestGyro().then(ok=>{if(ok)setGyro(true)})}
+ async function toggleGyro(){if(gyro){setGyro(false);return}setGyro(await requestGyro());}
  const jobs=useRef(new Map()),epoch=useRef(0),sequence=useRef(0),gesture=useRef(null),fade=useRef(),hold=useRef(),since=useRef(0);
  const [items,redraw]=useState([]),[size,setSize]=useState({width:1,height:1}),[measured,setMeasured]=useState({}),[ready,setReady]=useState(false);
  const [mode,setMode]=useState(preferred),[cameraError,setCameraError]=useState(''),[hint,setHint]=useState(''),[settings,setSettings]=useState(false),[pair,setPair]=useState(false),[fun,setFun]=useState(funPref),[detail,setDetail]=useState(null);
@@ -51,28 +56,32 @@ function App(){
  const spatial=useRef(false),captureRef=useRef(null),sheetRef=useRef(null);sheetRef.current=detail;
  const [captureId,setCaptureId]=useState(null);
  const funRef=useRef(funPref());
- const mint=()=>({price:(1+Math.floor(Math.random()*9999))*1000,vibe:vibes[Math.floor(Math.random()*vibes.length)]});
+ const mint=()=>({price:(1+Math.floor(Math.random()*9999))*1000,vibe:'person.vibe'+Math.floor(Math.random()*6)});
  function enableFun(value){try{localStorage.setItem('howmuch-fun',value?'on':'off')}catch{}funRef.current=value;setFun(value);for(const o of jobs.current.values()){if(o.phase==='person')o.coins=value?(o.coins??mint()):null;}sync()}
  const sync=()=>{if(alive.current)redraw(Array.from(jobs.current.values(),o=>({...o})))};
  useEffect(()=>{if(!ready)return;let last=canCapture(v.current);
    const timer=setInterval(()=>{const next=canCapture(v.current);if(next!==last){last=next;sync()}},150);
    return()=>clearInterval(timer)},[ready]);
  function wipe(){clearTimeout(hold.current);clearTimeout(fade.current);gesture.current=null;const c=pen.current;if(c){c.getContext('2d').clearRect(0,0,c.width,c.height);c.classList.remove('fade')}}
- function cancelJob(id){const o=jobs.current.get(id);if(!o)return;if(o.position)ignored.current=[...ignored.current.slice(-7),o.position];o.stop?.();o.controller?.abort();jobs.current.delete(id);if(detail===id)setDetail(null);sync();setHint('선택한 물체의 조사를 취소했습니다.');}
+ function cancelJob(id){const o=jobs.current.get(id);if(!o)return;if(o.position)ignored.current=[...ignored.current.slice(-7),o.position];o.stop?.();o.controller?.abort();jobs.current.delete(id);if(detail===id)setDetail(null);sync();setHint(t('hint.cancelled'));}
  const startCamera=async()=>{const id=++cameraJob.current;setCameraError('');try{
-  if(!navigator.mediaDevices?.getUserMedia)throw Error('휴대폰에서는 HTTPS 카메라 주소로 열어 주세요.');
+  if(!navigator.mediaDevices?.getUserMedia)throw Error(t('cam.https'));
   const s=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}},audio:false});
   if(id!==cameraJob.current||!alive.current){s.getTracks().forEach(t=>t.stop());return}
   stream.current?.getTracks().forEach(t=>t.stop());stream.current=s;v.current.srcObject=s;await v.current.play();if(alive.current)setReady(true);
- }catch(e){if(alive.current&&id===cameraJob.current)setCameraError(e.name==='NotAllowedError'?'브라우저 설정에서 카메라 권한을 허용해 주세요.':e.message||'카메라를 열 수 없습니다.')}};
- useEffect(()=>{alive.current=true;startCamera();note({mode,outcome:'session'});return()=>{alive.current=false;++epoch.current;++cameraJob.current;wipe();stream.current?.getTracks().forEach(t=>t.stop());segmentController.current?.abort();for(const o of jobs.current.values()){o.stop?.();o.controller?.abort()}}},[]);
+ }catch(e){if(alive.current&&id===cameraJob.current)setCameraError(e.name==='NotAllowedError'?t('cam.denied'):e.message||t('cam.error'))}};
+ useEffect(()=>{alive.current=true;note({mode,outcome:'session'});return()=>{alive.current=false;++epoch.current;++cameraJob.current;wipe();stream.current?.getTracks().forEach(t=>t.stop());segmentController.current?.abort();for(const o of jobs.current.values()){o.stop?.();o.controller?.abort()}}},[]);
+ useEffect(()=>{if(!gate&&alive.current&&!stream.current)void startCamera()},[gate]);
  useLayoutEffect(()=>{const ro=new ResizeObserver(([entry])=>setSize({width:entry.contentRect.width,height:entry.contentRect.height}));ro.observe(stage.current);return()=>ro.disconnect()},[]);
  const research=async(o,source,labelDataUrl,modelHint)=>{
    const live=()=>jobs.current.get(o.id)===o&&alive.current;
-   const start=performance.now(); o.phase='identifying'; o.error=null; o.result=null; sync();
-   const onPhase=e=>{if(live()&&e.phase==='researching'){o.phase='loading';o.candidate=e.candidate;sync()}};
+   const start=performance.now(); o.phase='identifying'; o.error=null; o.result=null; o.activity=[]; sync();
+   const onPhase=e=>{if(!live())return;
+     if(e.phase==='researching'){o.phase='loading';o.candidate=e.candidate||o.candidate;sync()}
+     else if(e.phase==='preliminary'){o.preliminary={price:e.price,count:e.count};sync()}
+     else if(e.phase==='progress'){o.activity=Array.isArray(e.activity)?e.activity.slice(-8):[...(o.activity||[]),e.step].filter(Boolean).slice(-8);if(o.phase==='identifying')o.phase='loading';sync()}};
    try{
-    const request=o.original ?? {imageDataUrl:source.toDataURL('image/jpeg',.85),cutoutDataUrl:o.selection.cutoutDataUrl||cutout(source,o.selection),selection:{x:o.selection.x,y:o.selection.y,width:o.selection.width,height:o.selection.height,polygon:o.selection.polygon},locale:'ko-KR'};
+    const request=o.original ?? {imageDataUrl:shrinkCanvas(source,768).toDataURL('image/jpeg',.8),cutoutDataUrl:await shrinkDataUrl(o.selection.cutoutDataUrl||cutout(source,o.selection),512),selection:{x:o.selection.x,y:o.selection.y,width:o.selection.width,height:o.selection.height,polygon:o.selection.polygon},locale:locale()};
     const r=await new HttpResearchProvider(providerConfig().researchEndpoint,providerConfig().jobsEndpoint).research({...request,...(labelDataUrl&&{labelDataUrl}),...(modelHint&&{modelHint})},o.controller.signal,onPhase);
     o.original=(r.status==='followup_required'||r.pricingMode==='type_estimate')?request:null;
     if(!live())return;
@@ -81,7 +90,7 @@ function App(){
    }catch(e){if(live()){o.phase='error';o.error=e.message;sync()}}
  };
  function refineModel(id,text){const o=jobs.current.get(id);const hint=String(text||'').trim().slice(0,80);if(!o?.original||!hint)return;void research(o,null,undefined,hint)}
- function beginLabel(o){if(!o?.original)return;segmentController.current?.abort();captureRef.current=o.id;setCaptureId(o.id);setDetail(null);setHint('같은 상품의 라벨이나 모델 각인을 가까이 비춰 주세요.');}
+ function beginLabel(o){if(!o?.original)return;segmentController.current?.abort();captureRef.current=o.id;setCaptureId(o.id);setDetail(null);setHint(t('hint.label'));}
  function endLabel(send){
    const o=jobs.current.get(captureRef.current);captureRef.current=null;setCaptureId(null);setHint('');
    if(!o)return;setDetail(o.id);
@@ -104,16 +113,16 @@ function App(){
  async function discover(input={},refresh=null){
    if(spatial.current||captureRef.current!=null||sheetRef.current!=null||!canCapture(v.current)||!ready)return;
    const current=epoch.current,manual=!!(input.point||input.selection),isPick=manual&&!refresh;
-   if(isPick&&jobs.current.size>=MAX_JOBS){setHint('최대 4개까지 함께 조사합니다. 조사 목록에서 ×로 하나를 닫아 주세요.');return}
+   if(isPick&&jobs.current.size>=MAX_JOBS){setHint(t('hint.max'));return}
    const controller=new AbortController(),source=snapshot(v.current);
    const reserved=isPick?{id:++sequence.current,controller,phase:'segmenting',position:null}:null;
    if(reserved){jobs.current.set(reserved.id,reserved);sync()}
    else{segmentController.current?.abort();segmentController.current=controller}
-   const previous=new Map([...jobs.current.values()].filter(o=>o.position).map(o=>[o.id,o.position]));if(!refresh)setHint('물체 윤곽을 찾는 중…');
+   const previous=new Map([...jobs.current.values()].filter(o=>o.position).map(o=>[o.id,o.position]));if(!refresh)setHint(t('hint.finding'));
    try{
     const r=await new HttpSegmentationProvider(providerConfig().segmentationEndpoint).segment({imageDataUrl:source.toDataURL('image/jpeg',.85),...input,signal:controller.signal});
     if(controller.signal.aborted||current!==epoch.current||!alive.current)return;
-    const found=(r.selections??(r.selection?[r.selection]:[])).filter(s=>s.polygon?.length>=3).slice(0,manual?1:4);
+    const raw=(r.selections??(r.selection?[r.selection]:[])).filter(s=>s.polygon?.length>=3),found=raw.filter(s=>s.width*s.height>=MIN_AREA).slice(0,manual?1:4);
     const claimed=new Set();
     for(const s of found){
      // A dismissed location suppresses new automatic jobs, never a refresh
@@ -124,9 +133,9 @@ function App(){
        const orig=previous.get(refresh.id),now=refresh.position;
        const stillTracked=orig&&now&&overlap(orig,s)>.38&&overlap(now,s)>.38;
        const cost=appearanceCost(refresh.template,source,s);
-       if((stillTracked ? !refresh.template||cost<32 : cost<16) &&
+       if((stillTracked ? !refresh.template||cost<32 : cost<(refresh.reseed?30:16)) &&
           !Array.from(jobs.current.values()).some(other=>other!==refresh&&other.position&&overlap(other.position,s)>.45&&appearanceCost(other.template,source,s)<=cost+4)){
-          bindTrack(refresh,s,source);sync();
+          bindTrack(refresh,s,source);refresh.reseed=false;sync();
        }continue;
      }
      const matches=isPick?[]:Array.from(jobs.current.values()).filter(o=>!claimed.has(o.id)&&o.position&&previous.has(o.id)&&(!refresh||o===refresh)&&person(o.selection)===person(s))
@@ -138,27 +147,29 @@ function App(){
      // An automatic refresh may finish while a visible track briefly loses
      // lock. Reuse a lost track only with positive, unambiguous appearance.
      if(!isPick){const lost=[...jobs.current.values()].filter(o=>!o.position&&o.template&&!claimed.has(o.id))
-       .map(o=>({o,cost:appearanceCost(o.template,source,s)})).filter(x=>x.cost<16).sort((a,b)=>a.cost-b.cost);
+       .map(o=>({o,cost:appearanceCost(o.template,source,s)})).filter(x=>x.cost<22).sort((a,b)=>a.cost-b.cost);   // looser after a turn: lighting and angle change the look
        if(lost.length){if(!lost[1]||lost[1].cost-lost[0].cost>5){claimed.add(lost[0].o.id);bindTrack(lost[0].o,s,source);sync()}continue;}}
      if(!reserved && jobs.current.size>=MAX_JOBS)continue;
      const o=reserved||{id:++sequence.current,controller:new AbortController()};Object.assign(o,{selection:s,position:s,phase:person(s)?'person':'loading',coins:person(s)&&funRef.current?mint():null});
      jobs.current.set(o.id,o);claimed.add(o.id);bindTrack(o,s,source);
      sync();if(o.phase!=='person')void research(o,source);
     }
-    if(reserved&&!found.length){reserved.phase='error';reserved.error='선택 범위에서 물체를 찾지 못했습니다.';sync()}
-    if(!refresh)setHint(found.length?'':'물체를 찾지 못했어요. 가까이 비추거나 직접 선택하세요.');
-   }catch(e){if(!controller.signal.aborted&&current===epoch.current){setHint(e.message||'물체 인식에 실패했습니다.');if(reserved){reserved.phase='error';reserved.error=e.message;sync()}}}finally{if(segmentController.current===controller)segmentController.current=null}
+    if(reserved&&!found.length){reserved.phase='error';reserved.error=t('seg.none');sync()}
+    if(!refresh)setHint(found.length?'':raw.length?t('hint.tooSmall'):t('hint.notFound'));
+   }catch(e){if(!controller.signal.aborted&&current===epoch.current){setHint(e.message||t('seg.fail'));if(reserved){reserved.phase='error';reserved.error=e.message;sync()}}}finally{if(segmentController.current===controller)segmentController.current=null}
  }
  useEffect(()=>{try{localStorage.setItem('howmuch-mode',mode)}catch{}wipe();segmentController.current?.abort();},[mode]);
  useEffect(()=>{if(!ready)return;
     let cursor=0;
     const timer=setInterval(()=>{if(gesture.current||document.hidden||segmentController.current||spatial.current||!canCapture(v.current))return;
      const now=performance.now();
-     const candidates=Array.from(jobs.current.values()).filter(o=>o.reference&&(o.refineNeeded||(!o.position&&now-(o.refinedAt||0)>4000)));
+     const candidates=Array.from(jobs.current.values()).filter(o=>o.reference&&(o.refineNeeded||(!o.position&&now-(o.refinedAt||0)>(o.ghostCenter?1500:4000))));
      if(!candidates.length)return;
      const o=candidates[cursor++%candidates.length],s=o.reference.selection;
      const previousImageDataUrl=o.reference.frame.toDataURL('image/jpeg',.72);
      o.refineNeeded=false;o.refinedAt=now;
+     if(!o.position&&o.ghostCenter){   // turned, rolled, flipped: the gyro says where the object is, so segment right there
+      const m=inMedia({x:o.ghostCenter.x,y:o.ghostCenter.y,width:0,height:0});o.reseed=true;void discover({point:{x:m.x,y:m.y}},o);return}
      void discover({propagation:{previousImageDataUrl,selection:{x:s.x,y:s.y,width:s.width,height:s.height,polygon:s.polygon,contours:s.contours}}},o);
     },1200);return()=>clearInterval(timer);
  },[mode,ready]);
@@ -184,65 +195,38 @@ function App(){
  const visible=[];if(canCapture(v.current))for(const o of items){if(!o.position)continue;const s=toScreen(o.position,size,v.current);if(s.x+s.width<=0||s.x>=1||s.y+s.height<=0||s.y>=1)continue;
   const box=boxForHud(s,size,measured[o.id]||{width:Math.min(164,size.width*.44),height:88},visible.map(x=>x.box));visible.push({o,s,box});}
  const xrCards=items.filter(o=>o.signature&&o.phase!=='person').map(o=>{
-  const d=summarizeCard(o.result), identity=o.result?.identity, name=identity?[identity.brand,identity.model].join(' '):o.result?.candidates?.[0]?.name||o.candidate?.name;
-  return {id:o.id,target:o.signature,title:name||'선택한 물체',price:o.phase==='identifying'?'물체 식별 중':o.phase==='loading'?'시세 조사 중':d.label||d.price};
+  const d=summarizeCard(o.result);
+  return {id:o.id,target:o.signature,title:nameOf(o),price:stateText(o)||d.label||d.price};
  });
  const selected=items.find(o=>o.id===detail);
  const isCapturing=captureId!=null;
- return <main className="app"><section className="camera" ref={stage} aria-label="라이브 가격 카메라">
-  <video ref={v} playsInline muted autoPlay/><div className="shade"/>
-  <canvas ref={pen} className={'draw-layer '+(mode==='draw'?'enabled':'')} aria-label="물체 그리기" onPointerDown={begin} onPointerMove={move} onPointerUp={e=>end(e)} onPointerCancel={e=>end(e,true)} onLostPointerCapture={e=>end(e,true)}/>
-  <header><b><i><ScanLine size={17}/></i> howmuch<span className="brand-sep">/</span><small>FIELD LENS</small></b><div className="header-actions"><button aria-label="설정" onClick={()=>setSettings(true)}><Settings size={18}/></button>{gyroSupported()&&<button className={'gyro-btn '+(gyro?'on':'')} aria-pressed={gyro} onClick={toggleGyro}><Compass size={15}/>공간 고정</button>}<button onClick={()=>setList(true)}>조사 목록 {items.length}</button>{xrCards.length>0&&<WorldAnchorButton compact objects={xrCards} onSessionStart={pauseForSpatial} onSessionEnd={resumeFromSpatial}/>}</div></header>
-  <div className="hint" role="status"><em/>{cameraError||hint||(ready?(mode==='auto'?'물체를 3.5초 동안 비춰 주세요':'물체를 탭하거나 둘러 그려 주세요'):'카메라 연결 중…')}</div>
-  {cameraError&&<button className="retry" onClick={startCamera}><Camera size={15}/> 카메라 다시 허용</button>}
-  {ready&&mode==='auto'&&items.length===0&&!cameraError&&<div className="reticle" aria-hidden="true"><i/><i/><i/><i/><span>물체를 비춰 보세요</span></div>}
-  <svg className="contours cutout-outline" viewBox="0 0 1 1" preserveAspectRatio="none" aria-hidden="true">{visible.map(({o,s})=><path key={o.id} fillRule="evenodd" d={(s.contours?.length?s.contours:[s.polygon]).map(r=>r.map((p,i)=>(i?'L':'M')+p.x+' '+p.y).join(' ')+'Z').join(' ')}/>)}</svg>
-  <GhostLayer enabled={gyro} jobs={jobs} video={v} size={size} label={o=>(o.result?.identity?.model||o.result?.candidates?.[0]?.name||o.candidate?.name||'선택한 물체')+' · '+jobState(o)}/>
-  {!isCapturing&&visible.map(({o,s,box})=>{const ax=(s.x+s.width/2)*size.width,ay=(s.y+s.height/2)*size.height,tilt={ry:Math.max(-18,Math.min(18,(ax/size.width-.5)*-36)),rx:Math.max(-8,Math.min(8,(ay/size.height-.5)*10)),k:Math.max(.86,Math.min(1.22,.78+Math.sqrt(s.width*s.height)*1.5))};return <React.Fragment key={o.id}><Leader box={box} ax={ax} ay={ay} phase={o.phase}/><Hud o={o} box={box} tilt={tilt} fun={fun} measure={(id,n)=>setMeasured(m=>m[id]?.width===n.width&&m[id]?.height===n.height?m:{...m,[id]:n})} open={()=>setDetail(o.id)}/><button className="card-dismiss" style={{left:box.x+box.width-25,top:box.y+5}} aria-label={'물체 '+o.id+' 조사 취소'} onClick={e=>{e.stopPropagation();cancelJob(o.id)}}>X</button></React.Fragment>})}
-  {items.length>0&&<div className="job-tray" aria-label="진행 중인 조사">
-   <div className="job-tray-head"><strong>조사 중인 물체</strong><button onClick={()=>setList(true)}>전체 보기</button></div>
-   <div className="job-tray-list">{items.map(o=><button className="job-chip" key={o.id} onClick={()=>setDetail(o.id)}>
-    {o.selection?.cutoutDataUrl?<img className="chip-thumb" alt="" src={o.selection.cutoutDataUrl}/>:<span className={'job-dot '+(o.position?'':'muted')}/>}<span className="job-chip-name">{o.result?.identity?.model||o.result?.candidates?.[0]?.name||o.candidate?.name||'선택한 물체'}</span><span className="job-chip-state">{jobState(o)}</span><span className="job-chip-x" onClick={e=>{e.stopPropagation();cancelJob(o.id)}}>×</span>
-   </button>)}</div>
-  </div>}
-  {isCapturing?<nav aria-label="라벨 촬영"><button onClick={()=>endLabel(false)}>취소</button><button className="on" onClick={()=>endLabel(true)}>라벨 촬영 · 다시 식별</button></nav>:<nav aria-label="선택 모드">{[['auto','자동',Crosshair],['draw','터치·그리기',Hand]].map(([m,t,I])=><button key={m} aria-pressed={mode===m} className={mode===m?'on':''} onClick={()=>setMode(m)}><I size={16}/>{t}</button>)}</nav>}
-  <aside><a href="https://github.com/NomaDamas/HowMuch" target="_blank" rel="noreferrer">HowMuch by NomaDamas MinXing</a> · 조회한 판매처 기준</aside>
- </section>
- {list&&<div className="back"><section className="sheet" role="dialog" aria-label="조사 목록"><h2>조사 목록</h2>{items.length===0&&<p>조사 중인 물체가 없습니다.</p>}{items.map(o=><div key={o.id} className="job-row"><button onClick={()=>{setList(false);setDetail(o.id)}}>#{o.id} {o.result?.candidates?.[0]?.name||o.candidate?.name||'선택한 물체'} · {o.phase==='segmenting'?'윤곽 찾는 중':o.phase==='identifying'?'식별 중':o.phase==='loading'?'시세 조사 중':o.error||summarizeCard(o.result).price}</button><button aria-label={'목록에서 물체 '+o.id+' 조사 취소'} onClick={()=>cancelJob(o.id)}>×</button></div>)}<button className="primary" onClick={()=>setList(false)}>카메라로 돌아가기</button></section></div>}
-  {settings&&<div className="back"><section className="sheet" role="dialog" aria-label="설정"><small>FIELD LENS</small><h2>카메라 설정</h2><label className="option"><input type="checkbox" checked={fun} onChange={e=>enableFun(e.target.checked)}/> 사람 장난 가격표 (분위기 기반, 실제 가치 아님)</label><p>사람에게는 장난 가격표만 붙으며 외모·체형 평가는 하지 않고 실제 가격이 아닙니다.</p><p>화면 윤곽은 잠깐 시야를 잃어도 유지되고, 지원 기기의 공간 보기에서는 누끼 윤곽과 HUD가 같은 월드 앵커를 따라갑니다.</p><a href="https://github.com/NomaDamas/HowMuch" target="_blank" rel="noreferrer" className="option">프로젝트 소스 ↗</a><a href="https://github.com/NomaDamas/HowMuch" target="_blank" rel="noreferrer" className="option star-cta">GitHub에서 HowMuch Star 누르기 ↗</a><p className="muted-copy">Star는 사용자가 GitHub에서 직접 누를 때만 등록됩니다. 인증 토큰은 저장하지 않습니다.</p><button className="option" onClick={()=>{setSettings(false);setPair(true)}}>휴대폰 연결 QR</button><button className="primary" onClick={()=>setSettings(false)}>카메라로 돌아가기</button></section></div>}
- <Pairing open={pair} onClose={()=>setPair(false)}/>
- {selected&&<Evidence o={selected} fun={fun} beginLabel={()=>beginLabel(jobs.current.get(selected.id))} refine={t=>refineModel(selected.id,t)} pause={pauseForSpatial} resume={resumeFromSpatial} close={()=>setDetail(null)} click={()=>note({mode,outcome:'source_click',sourceClicks:1})}/>}
- </main>
+ const shown=filter==null?visible:visible.filter(x=>x.o.id===filter);
+  const modeHint=mode==='auto'?t('hint.auto'):t('hint.draw');
+  const pill=cameraError||hint||(ready&&items.length===0?modeHint:'');
+  return <main className="app"><section className="camera" ref={stage} aria-label={t('cam.label')} onClickCapture={askMotion}>
+   <video ref={v} playsInline muted autoPlay/><div className="shade"/>
+   <canvas ref={pen} className={'draw-layer '+(mode==='draw'?'enabled':'')} aria-label={t('cam.draw')} onPointerDown={begin} onPointerMove={move} onPointerUp={e=>end(e)} onPointerCancel={e=>end(e,true)} onLostPointerCapture={e=>end(e,true)}/>
+   <div className="topbar"><b className="brand"><i><ScanLine size={18}/></i>HowMuch</b><div className="actions">
+    {gyroSupported()&&<button className={'icon-btn '+(gyro?'on':'')} aria-label="Spatial memory" aria-pressed={gyro} onClick={toggleGyro}><Compass size={20}/></button>}
+    {xrCards.length>0&&<WorldAnchorButton compact objects={xrCards} onSessionStart={pauseForSpatial} onSessionEnd={resumeFromSpatial}/>}
+    <button className="icon-btn" aria-label={t('sheet.items')} onClick={()=>setList(true)}><List size={20}/>{items.length>0&&<b>{items.length}</b>}</button>
+    <button className="icon-btn" aria-label={t('sheet.settings')} onClick={()=>setSettings(true)}><Settings size={20}/></button>
+   </div></div>
+   <ItemBar items={items} filter={filter} setFilter={setFilter} cancel={cancelJob} fun={fun}/>
+   {cameraError&&<button className="retry" onClick={startCamera}><Camera size={16}/>{t('cam.retry')}</button>}
+   {ready&&mode==='auto'&&items.length===0&&!cameraError&&<div className="reticle" aria-hidden="true"><i/><i/><i/><i/></div>}
+   <svg className="contours cutout-outline" viewBox="0 0 1 1" preserveAspectRatio="none" aria-hidden="true">{shown.map(({o,s})=><path key={o.id} fillRule="evenodd" d={(s.contours?.length?s.contours:[s.polygon]).map(r=>r.map((p,i)=>(i?'L':'M')+p.x+' '+p.y).join(' ')+'Z').join(' ')}/>)}</svg>
+   <GhostLayer enabled={gyro} jobs={jobs} video={v} size={size} filter={filter} label={o=>nameOf(o)}/>
+   {!isCapturing&&shown.map(({o,s,box})=>{const ax=(s.x+s.width/2)*size.width,ay=(s.y+s.height/2)*size.height,tilt={ry:Math.max(-18,Math.min(18,(ax/size.width-.5)*-36)),rx:Math.max(-8,Math.min(8,(ay/size.height-.5)*10)),k:Math.max(.86,Math.min(1.22,.78+Math.sqrt(s.width*s.height)*1.5))};return <React.Fragment key={o.id}><Leader box={box} ax={ax} ay={ay} phase={o.phase}/><Hud o={o} box={box} tilt={tilt} fun={fun} measure={(id,n)=>setMeasured(m=>m[id]?.width===n.width&&m[id]?.height===n.height?m:{...m,[id]:n})} open={()=>setDetail(o.id)}/><button className="card-dismiss" style={{left:box.x+box.width-25,top:box.y+5}} aria-label={t('sheet.cancelItem',{n:o.id})} onClick={e=>{e.stopPropagation();cancelJob(o.id)}}>X</button></React.Fragment>})}
+   {pill&&!isCapturing&&<div className="hint" role="status">{pill}</div>}
+   {isCapturing?<nav aria-label={t('label.aria')}><button onClick={()=>endLabel(false)}>{t('label.cancel')}</button><button className="on" onClick={()=>endLabel(true)}>{t('label.send')}</button></nav>:<nav aria-label={t('mode.aria')}>{[['auto',t('mode.auto'),Crosshair],['draw',t('mode.draw'),Hand]].map(([m,label,I])=><button key={m} aria-pressed={mode===m} className={mode===m?'on':''} onClick={()=>setMode(m)}><I size={17}/>{label}</button>)}</nav>}
+   {gate&&<StarGate onDone={()=>setGate(false)}/>}
+  </section>
+  {list&&<ItemsSheet items={items} fun={fun} close={()=>setList(false)} open={id=>{setList(false);setDetail(id)}} cancel={cancelJob}/>}
+  {settings&&<SettingsSheet close={()=>setSettings(false)} fun={fun} setFun={enableFun} pair={()=>{setSettings(false);setPair(true)}} star={()=>{setSettings(false);setStarSheet(true)}}/>}
+  {starSheet&&<StarSheet close={()=>setStarSheet(false)}/>}
+  <Pairing open={pair} onClose={()=>setPair(false)}/>
+  {selected&&<Detail o={selected} fun={fun} beginLabel={()=>beginLabel(jobs.current.get(selected.id))} refine={text=>refineModel(selected.id,text)} pause={pauseForSpatial} resume={resumeFromSpatial} close={()=>setDetail(null)} click={()=>note({mode,outcome:'source_click',sourceClicks:1})}/>}
+  </main>
 }
-function jobState(o){if(o.error)return '검색 실패';if(o.phase==='segmenting')return '누끼 찾는 중';if(o.phase==='identifying')return '물체 확인 중';if(o.phase==='loading')return '시세 조사 중';if(o.phase==='research_unavailable')return '판매처 연결 불가';if(o.phase==='followup_required'||o.result?.status==='followup_required')return '품번 필요';if(o.visibility==='reacquiring')return '누끼 재획득 중';if(o.visibility==='lost')return '시야 밖 · 앵커 유지';return o.phase==='person'?'놀이 카드':summarizeCard(o.result).price||'가격 확인';}
-function Leader({box,ax,ay,phase}){const sx=Math.max(box.x,Math.min(ax,box.x+box.width)),sy=Math.max(box.y,Math.min(ay,box.y+box.height));const inside=sx===ax&&sy===ay;
- return <svg className={'leader '+phase} aria-hidden="true">{!inside&&<line x1={sx} y1={sy} x2={ax} y2={ay}/>}<circle className="anchor-core" cx={ax} cy={ay} r="4"/><circle className="anchor-ripple" cx={ax} cy={ay} r="9"/><circle className="anchor-ripple two" cx={ax} cy={ay} r="9"/></svg>}
-function Hud({o,box,tilt,measure,open,fun}){const node=useRef(null),ref=useRef(measure);ref.current=measure;
- useLayoutEffect(()=>{const read=()=>{const r=node.current.getBoundingClientRect();ref.current(o.id,{width:r.width,height:r.height})};read();const ro=new ResizeObserver(read);ro.observe(node.current);return()=>ro.disconnect()},[o.id]);
- const r=o.result,c=r?.candidates[0]||o.candidate,display=summarizeCard(r),isPerson=o.phase==='person',needsLabel=o.phase==='followup_required'||r?.status==='followup_required';
-const sellers=(r?.offers||[]).reduce((n,x)=>n+(x.sellerCount||1),0);
-return <button className="card" ref={node} style={{left:box.x,top:box.y,'--ry':(tilt?.ry||0)+'deg','--rx':(tilt?.rx||0)+'deg','--k':tilt?.k||1}} onClick={open} data-object-id={o.id} data-phase={o.phase}><small><i/>{needsLabel?'모델 번호 필요':o.phase==='identifying'?'물체 확인 중':o.phase==='loading'?'판매 가격 검색 중':isPerson?'캐릭터':o.phase==='research_unavailable'?'판매처 연결 불가':o.phase==='error'?'검색 실패':o.phase==='partial'&&!r?.estimate?'부분 결과':display.type}</small><strong>{isPerson?'사람':(r?.identity?[r.identity.brand,r.identity.model].join(' '):c?.name)|| (needsLabel?'품번·라벨을 가까이 비춰 주세요':o.phase==='identifying'?'누끼 확인 중':o.phase==='loading'?'판매처 대조 중':'확인된 상품 없음')}</strong>
- {['loading','identifying'].includes(o.phase)?<span className="skeleton"/>:<b>{isPerson?(fun&&o.coins?'₩'+o.coins.price.toLocaleString('ko-KR')+' 놀이 가격':'놀이 모드 꺼짐'):display.price}</b>}
- <footer>{sellers>0&&<em className="trust">{sellers}곳 비교</em>}{isPerson?'실제 가격 아님':needsLabel?'브랜드·모델 근거 필요':o.phase==='identifying'?'선택한 물체 식별 중':o.phase==='loading'?'판매처 대조 중':o.visibility==='reacquiring'?'누끼 재획득 중':display.basis} <ChevronRight size={13}/></footer></button>}
-function Evidence({o,close,click,fun,beginLabel,refine,pause,resume}){
- const r=o.result,display=summarizeCard(r),c=r?.candidates?.[0]??o.candidate;
- const title=r?.identity?.model?[r.identity.brand,r.identity.model].filter(Boolean).join(' '):c?.name;
- const est=r?.estimate,repr=r?.representative,proof=r?.identity?.modelEvidence;
- const nativeURL=spatialHandoff(title,display.label,o.signature);
- const mobile=/(iPhone|iPad|Android)/i.test(navigator.userAgent)||navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1;
- return <div className="back" onClick={close}><section className="sheet" role="dialog" aria-label="가격 근거" onClick={e=>e.stopPropagation()}>
- <small>FIELD NOTES / 조회 근거</small><h2>{title||(o.phase==='person'?'사람 캐릭터':'상품 확인 중')}</h2>
- {o.phase==='person'?<p>{fun&&o.coins?o.coins.vibe+' · 장난으로 매긴 가격이며 외모·체형·실제 가치와 무관합니다.':'설정에서 놀이 모드를 켤 수 있습니다.'}</p>:<>
- <p>{o.error||(o.phase==='research_unavailable'?'검색 사이트에 연결하지 못했습니다. 잠시 후 다시 선택해 주세요.':o.phase==='loading'?'판매처에서 가격 근거를 확인 중입니다.':o.phase==='identifying'?'선택한 물체를 식별 중입니다.':clock(r?.completedAt))}</p>
- {!['identifying','loading'].includes(o.phase)&&(r?.status==='followup_required'?<div className="best">{display.basis} <b>{display.price}</b></div>:<div className="best">{display.basis} <b>{display.price}</b></div>)}
- {r?.followup&&o.original&&<><p>{r.followup.prompt}</p><form className="model-form" onSubmit={e=>{e.preventDefault();refine(e.currentTarget.elements.model.value)}}><input name="model" aria-label="모델명" placeholder="모델명 예: AirPods Pro 2" maxLength={80} autoComplete="off"/><button className="primary">이 모델로 다시 찾기</button></form><button className="primary" onClick={beginLabel}>같은 상품의 라벨 추가 촬영</button></>}
- {Array.isArray(proof)&&proof.length>0&&<p>모델 식별 근거: {proof.join(' · ')}</p>}
- {repr&&repr.sampleCount>1&&<p>조회 범위 {money(repr.min,repr.currency)} ~ {money(repr.max,repr.currency)} · 중앙값 {money(repr.median,repr.currency)}</p>}
- {est&&<><p>{r.pricingMode==='market_unit'?'판매처와 관계없이 '+(est.region||'전국')+' '+est.unit+' 기준 시세입니다. 조사일 '+(est.observedAt||'')+'.':'모델을 모르는 상태에서 같은 종류 상품의 가격을 모은 대략값입니다. 정확한 가격이 아닙니다.'}</p>
- <p>평균 {money(est.mean,est.currency)}{est.unit?' / '+est.unit:''} · 중앙값 {money(est.median,est.currency)} · 범위 {money(est.min,est.currency)} ~ {money(est.max,est.currency)} · {est.sampleCount}건</p></>}
- {repr?.exchange&&<p>환산 기준: <a href={repr.exchange.url} rel="noreferrer" target="_blank">ECB {repr.exchange.date}</a></p>}
- {r?.offers.map((a,i)=><a key={i} className="source" href={a.url} target="_blank" rel="noopener noreferrer" onClick={click}><strong>{a.title}</strong><span>{a.merchant} · {money(a.price,a.currency)} <ExternalLink size={13}/></span><small>{a.condition==='new'?'새 상품':a.condition==='used'?'중고':'상태 미확인'} · {a.availability==='in_stock'?'재고 있음':a.availability==='out_of_stock'?'품절':'재고 미확인'} · {a.shipping==null?'배송비 미확인':'배송비 '+money(a.shipping,a.currency)} · {clock(a.checkedAt)}</small>{a.evidence?.map((e,j)=><small key={j}>{e}</small>)}</a>)}
- {discoveryLabel(r?.discovery)&&<p>{discoveryLabel(r.discovery)}</p>}
- {nativeURL&&<><WorldAnchorButton title={title} price={display.label} target={o.signature} onSessionStart={pause} onSessionEnd={resume}/>{mobile&&<a className="option" href={nativeURL} title="같은 상품 확인을 위해 누끼 내부의 색상 표본을 설치한 앱에 전달합니다">HowMuch AR에서 열기</a>}</>}
- </>}<button className="primary" onClick={close}>카메라로 돌아가기</button></section></div>}
 createRoot(document.getElementById('root')).render(<App/>);
