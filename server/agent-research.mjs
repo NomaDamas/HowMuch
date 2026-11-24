@@ -170,7 +170,28 @@ export async function quickName(images, { signal, env = process.env, fetchImpl =
 
 export const askForModel = (korean) => ({ reason: 'exact_model_not_visible', prompt: korean ? '정확한 가격은 모델명을 입력하거나 라벨을 카메라에 가까이 비추면 알 수 있어요.' : 'For an exact price, type the model name or show the label up close.' });
 
+// ---- Result cache: the same item shown again within a few hours is answered at once (key = brand + model words).
+const cacheStore = new Map();
+const words = v => String(v || '').normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim().split(' ').filter(Boolean);
+// Words that describe a variant of the same product rather than the product itself are left out of the key.
+const VARIANT_WORDS = new Set(['model', 'set', 'edition', 'version', 'ver', 'new', 'white', 'black', 'gray', 'grey', 'silver', 'blue', 'red', 'pink', 'green', 'the', 'and', '화이트', '블랙', '실버', '그레이', '블루', '레드', '핑크', '세트', '모델', '에디션', '신형']);
+const cacheKey = r => { const i = r?.identity; if (!i?.brand || !i?.model) return ''; const w = [...new Set(words(i.brand + ' ' + i.model).filter(x => !VARIANT_WORDS.has(x)))].sort(); return w.length >= 2 ? w.join(' ') : ''; };
+export const researchCache = {
+  ttl: env => Number(env?.HOWMUCH_CACHE_TTL_MS ?? process.env.HOWMUCH_CACHE_TTL_MS ?? 6 * 3600e3),
+  clear: () => cacheStore.clear(),
+  /** Store only trustworthy results: an identified exact model, or a market unit price. */
+  put(r, env) { const ttl = this.ttl(env), key = cacheKey(r); if (!ttl || !key || !['exact_model', 'market_unit'].includes(r?.pricingMode) || r.status !== 'complete') return;
+    cacheStore.delete(key); cacheStore.set(key, { r, at: Date.now() }); while (cacheStore.size > 100) cacheStore.delete(cacheStore.keys().next().value); },
+  /** A cached item matches when the name just read from the picture contains every word of its brand + model. */
+  find(name, env) { const ttl = this.ttl(env), w = new Set(words(name)); if (!ttl || w.size < 2) return null;
+    for (const [key, v] of cacheStore) { if (Date.now() - v.at > ttl) { cacheStore.delete(key); continue; } if (key.split(' ').every(x => w.has(x))) return structuredClone(v.r); } return null; },
+};
+
 export async function agentResearch(body, deps = {}) {
+  const r = await research(body, deps); researchCache.put(r, deps.env); return r;
+}
+
+async function research(body, deps = {}) {
   const signal = deps.signal, startedAt = new Date().toISOString();
   const image = body.imageContext?.cutoutDataUrl || body.cutoutDataUrl, scene = body.imageContext?.fullFrameDataUrl || body.imageDataUrl;
   if (typeof image !== 'string' || image.length > 12e6 || !imagePattern.test(image)) throw Error('cutout_required');
@@ -184,7 +205,8 @@ export async function agentResearch(body, deps = {}) {
 
   deps.onPhase?.({ phase: 'researching' });
   // Name first: this finishes in seconds and shows on the card while the (much slower) price research runs.
-  void (deps.quickName || quickName)(images, { signal, env: deps.env, fetchImpl: deps.fetchImpl, language }).then(q => { if (q?.name && !settled) { deps.onPhase?.({ phase: 'researching', candidate: { name: q.name, confidence: .6 } }); say({ kind: 'identified', text: q.name }); } }, () => {});
+  void (deps.quickName || quickName)(images, { signal, env: deps.env, fetchImpl: deps.fetchImpl, language }).then(q => { if (q?.name && !settled) { deps.onPhase?.({ phase: 'researching', candidate: { name: q.name, confidence: .6 } }); say({ kind: 'identified', text: q.name });
+    const hit = researchCache.find(modelHint || q.name, deps.env); if (hit && !settled && !modelHint) { settled = hit; say({ kind: 'cache' }); ac.abort(); resolveEarly(hit); } } }, () => {});
   const results = [];
   const ac = new AbortController(), sig = signal ? AbortSignal.any([signal, ac.signal]) : ac.signal;
   let settled = null, resolveEarly; const earlyP = new Promise(res => { resolveEarly = res; });
@@ -194,6 +216,8 @@ export async function agentResearch(body, deps = {}) {
   let compared = false;
   const jobs = FOCI.slice(0, agents).map((focus, k) => call(focus, images, { signal: sig, env: deps.env, fetchImpl: deps.fetchImpl, modelHint, language, onStep: st => say(st, k) }).then(async r => {
     if (!r) return; results.push(r); say({ kind: 'agentDone', n: r.offers.length }, k);
+    if (results.length === 1 && !settled && r.kind !== 'person') { const rows = r.offers.filter(o => shopUrl(o.url) && Number.isInteger(o.price) && o.price > 0).map(o => ({ ...o, evidence: o.evidence || [] }));
+      const sm = await summarizeListings(rows, { min: 1 }).catch(() => null); if (sm && !settled) try { deps.onPhase?.({ phase: 'preliminary', price: sm.median, count: sm.rows.length }); } catch { /* best effort */ } }
     if (results.length >= 2 && !compared) { compared = true; say({ kind: 'compare', n: results.reduce((a, x) => a + x.offers.length, 0) }); }
     if (!settled && results.length >= 2) { const t = await assemble(); if (!settled && t.status === 'complete') { settled = t; ac.abort(); resolveEarly(t); } }
   }, () => {}));

@@ -23,6 +23,7 @@ const busy = o => ['segmenting', 'identifying', 'loading'].includes(o.phase);
 export const stateText = o => o.error ? t('st.failed') : o.phase === 'segmenting' ? t('st.segmenting') : o.phase === 'identifying' ? t('st.identifying') : o.phase === 'loading' ? t('st.searching')
   : o.phase === 'research_unavailable' ? t('st.unavailable') : o.phase === 'followup_required' ? t('st.needModel') : o.visibility === 'reacquiring' ? t('st.reacquiring') : o.visibility === 'lost' ? t('st.lost') : '';
 export function priceOf(o, fun) {
+  if (!o.result && o.preliminary && busy(o)) return '~₩' + o.preliminary.price.toLocaleString('en-US');
   if (o.phase === 'person') return fun && o.coins ? '₩' + o.coins.price.toLocaleString(numberFormat()) : '—';
   if (busy(o)) return '';
   return summarizeCard(o.result).price;
@@ -69,10 +70,10 @@ export function Hud({ o, box, tilt, measure, open, fun }) {
   useLang();
   const node = useRef(null), ref = useRef(measure); ref.current = measure;
   useLayoutEffect(() => { const read = () => { const r = node.current.getBoundingClientRect(); ref.current(o.id, { width: r.width, height: r.height }); }; read(); const ro = new ResizeObserver(read); ro.observe(node.current); return () => ro.disconnect(); }, [o.id]);
-  const r = o.result, price = priceOf(o, fun), last = busy(o) ? (o.activity || []).at(-1) : null, sub = o.phase === 'person' ? '' : r?.pricingMode === 'type_estimate' ? t('price.estimate').split(' · ')[0] : (last ? stepText(last) : stateText(o));
+  const r = o.result, price = priceOf(o, fun), last = busy(o) ? (o.activity || []).at(-1) : null, prelim = busy(o) && !r && o.preliminary ? t('price.prelim', { n: o.preliminary.count }) : '', sub = o.phase === 'person' ? '' : r?.pricingMode === 'type_estimate' ? t('price.estimate').split(' · ')[0] : (prelim || (last ? stepText(last) : stateText(o)));
   return <button className="card" ref={node} style={{ left: box.x, top: box.y, '--ry': (tilt?.ry || 0) + 'deg', '--rx': (tilt?.rx || 0) + 'deg', '--k': tilt?.k || 1 }} onClick={open} data-object-id={o.id} data-phase={o.phase}>
     <span className="card-name">{nameOf(o)}</span>
-    {busy(o) ? <span className="skeleton" /> : <span className="card-price">{price}</span>}
+    {busy(o) && !price ? <span className="skeleton" /> : <span className={'card-price' + (busy(o) ? ' prelim' : '')}>{price}</span>}
     {(sub || busy(o)) && <span className={'card-sub' + (busy(o) ? ' live' : '')}>{busy(o) ? (sub || stateText(o)) : sub}</span>}
   </button>;
 }

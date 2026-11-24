@@ -26,6 +26,7 @@ export default function GhostLayer({ enabled, jobs, video, size, label, filter }
       const R = pose.current, cam = intrinsics(60, size.width / Math.max(size.height, 1)), out = [];
       for (const o of jobs.current.values()) {
         if (o.position) {
+          o.ghostCenter = null;
           const s = toScreen(o.position, size, video.current);
           o.screenRings = (s.contours?.length ? s.contours : [s.polygon]).map(thin); o.screenCenter = { x: s.x + s.width / 2, y: s.y + s.height / 2 };
           if (R) { o.worldDir = worldDirection(R, o.screenCenter, cam); o.worldRings = o.screenRings.map(r => r.map(p => worldDirection(R, p, cam))); }
@@ -38,6 +39,7 @@ export default function GhostLayer({ enabled, jobs, video, size, label, filter }
           continue;
         }
         const center = projectDirection(R, o.worldDir, cam);
+        o.ghostCenter = center.inView && !center.behind ? { x: center.x, y: center.y } : null;   // where the lost object should be now: seed for re-segmentation
         const age = o.lostAt ? (performance.now() - o.lostAt) / 1000 : 0;
         // Outline: project each stored direction; points behind the lens are skipped.
         const rings = (o.worldRings || []).map(r => r.map(d => projectDirection(R, d, cam))).filter(r => r.length > 2 && r.every(p => !p.behind));

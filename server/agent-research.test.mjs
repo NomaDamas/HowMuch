@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { agentResearch, consensusIdentity, parseAgentOutput, runAgent, buildAgentPrompt, summarizeListings, quickName } from './agent-research.mjs';
+import { agentResearch, researchCache, consensusIdentity, parseAgentOutput, runAgent, buildAgentPrompt, summarizeListings, quickName } from './agent-research.mjs';
 import { assertResearchEnvelope } from './research-contract.mjs';
 
 const img = 'data:image/png;base64,AAAA';
@@ -158,4 +158,29 @@ test('research reports progress: object identified, each agent finishing, the co
   assert.ok(steps.some(s => s.kind === 'identified' && s.text === 'Nintendo Switch OLED'));
   assert.equal(steps.filter(s => s.kind === 'search').length, 2); assert.equal(steps.filter(s => s.kind === 'agentDone').length >= 2, true);
   assert.ok(steps.some(s => s.kind === 'compare' && s.n === 2)); assert.ok(steps.filter(s => s.kind === 'search').every(s => Number.isInteger(s.agent)));
+});
+
+test('preliminary price: the first agent\'s rough median is reported before the final answer', async () => {
+  const phases = []; let n = 0;
+  const fns = [agent({ offers: [offer('https://a.co.kr/p/1', 440000), offer('https://a.co.kr/p/2', 450000), offer('https://a.co.kr/p/3', 460000)] }), async () => { await new Promise(r => setTimeout(r, 60)); return out({ offers: [offer('https://b.co.kr/p/9', 455000)] }); }];
+  await agentResearch(body, { agents: 2, graceMs: 200, onPhase: e => phases.push(e), quickName: async () => null, runAgent: () => fns[n++]() });
+  const p = phases.find(e => e.phase === 'preliminary'); assert.ok(p, 'preliminary event'); assert.equal(p.price, 450000); assert.equal(p.count, 3);
+});
+
+test('cache: a verified exact result is reused when the same item is named again, and never for other models', async () => {
+  researchCache.clear(); const env = { HOWMUCH_CACHE_TTL_MS: '60000' };
+  const first = await agentResearch(body, { env, agents: 2, graceMs: 30, quickName: async () => null, runAgent: (() => { let n = 0; const f = [agent({ offers: [offer('https://a.co.kr/p/1', 446310)] }), agent({ offers: [offer('https://b.co.kr/p/2', 450000)] })]; return () => f[n++](); })() });
+  assert.equal(first.status, 'complete');
+  const phases = []; let called = 0;
+  const hit = await agentResearch(body, { env, agents: 2, graceMs: 30, onPhase: e => phases.push(e), quickName: async () => ({ kind: 'product', name: 'Nintendo Switch OLED white' }), runAgent: () => { called++; return new Promise(() => {}); } });
+  assert.equal(hit.status, 'complete'); assert.equal(hit.offers.length, first.offers.length); assert.ok(phases.some(e => e.step?.kind === 'cache'));
+  const miss = await agentResearch(body, { env, agents: 2, graceMs: 30, quickName: async () => ({ kind: 'product', name: 'Nintendo Switch Lite' }), runAgent: (() => { let n = 0; const f = [agent({ offers: [] }), agent({ offers: [] })]; return () => f[n++](); })() });
+  assert.notEqual(miss.status, 'complete'); researchCache.clear();
+});
+
+test('cache key ignores colour/set words so "Switch OLED Model White Set" is found by "Nintendo Switch OLED"', async () => {
+  researchCache.clear(); const env = { HOWMUCH_CACHE_TTL_MS: '60000' };
+  const r = await agentResearch(body, { env, agents: 2, graceMs: 30, quickName: async () => null, runAgent: (() => { let n = 0; const f = [agent({ offers: [offer('https://a.co.kr/p/1', 446310)] }), agent({ offers: [offer('https://b.co.kr/p/2', 450000)] })]; return () => f[n++](); })() });
+  assert.equal(r.status, 'complete');
+  assert.ok(researchCache.find('Nintendo Switch OLED', env), 'found without the variant words'); assert.equal(researchCache.find('Nintendo Switch Lite', env), null); assert.equal(researchCache.find('Switch', env), null); researchCache.clear();
 });

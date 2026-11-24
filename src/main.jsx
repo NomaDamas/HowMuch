@@ -78,6 +78,7 @@ function App(){
    const start=performance.now(); o.phase='identifying'; o.error=null; o.result=null; o.activity=[]; sync();
    const onPhase=e=>{if(!live())return;
      if(e.phase==='researching'){o.phase='loading';o.candidate=e.candidate||o.candidate;sync()}
+     else if(e.phase==='preliminary'){o.preliminary={price:e.price,count:e.count};sync()}
      else if(e.phase==='progress'){o.activity=Array.isArray(e.activity)?e.activity.slice(-8):[...(o.activity||[]),e.step].filter(Boolean).slice(-8);if(o.phase==='identifying')o.phase='loading';sync()}};
    try{
     const request=o.original ?? {imageDataUrl:shrinkCanvas(source,768).toDataURL('image/jpeg',.8),cutoutDataUrl:await shrinkDataUrl(o.selection.cutoutDataUrl||cutout(source,o.selection),512),selection:{x:o.selection.x,y:o.selection.y,width:o.selection.width,height:o.selection.height,polygon:o.selection.polygon},locale:locale()};
@@ -132,9 +133,9 @@ function App(){
        const orig=previous.get(refresh.id),now=refresh.position;
        const stillTracked=orig&&now&&overlap(orig,s)>.38&&overlap(now,s)>.38;
        const cost=appearanceCost(refresh.template,source,s);
-       if((stillTracked ? !refresh.template||cost<32 : cost<16) &&
+       if((stillTracked ? !refresh.template||cost<32 : cost<(refresh.reseed?30:16)) &&
           !Array.from(jobs.current.values()).some(other=>other!==refresh&&other.position&&overlap(other.position,s)>.45&&appearanceCost(other.template,source,s)<=cost+4)){
-          bindTrack(refresh,s,source);sync();
+          bindTrack(refresh,s,source);refresh.reseed=false;sync();
        }continue;
      }
      const matches=isPick?[]:Array.from(jobs.current.values()).filter(o=>!claimed.has(o.id)&&o.position&&previous.has(o.id)&&(!refresh||o===refresh)&&person(o.selection)===person(s))
@@ -162,11 +163,13 @@ function App(){
     let cursor=0;
     const timer=setInterval(()=>{if(gesture.current||document.hidden||segmentController.current||spatial.current||!canCapture(v.current))return;
      const now=performance.now();
-     const candidates=Array.from(jobs.current.values()).filter(o=>o.reference&&(o.refineNeeded||(!o.position&&now-(o.refinedAt||0)>4000)));
+     const candidates=Array.from(jobs.current.values()).filter(o=>o.reference&&(o.refineNeeded||(!o.position&&now-(o.refinedAt||0)>(o.ghostCenter?1500:4000))));
      if(!candidates.length)return;
      const o=candidates[cursor++%candidates.length],s=o.reference.selection;
      const previousImageDataUrl=o.reference.frame.toDataURL('image/jpeg',.72);
      o.refineNeeded=false;o.refinedAt=now;
+     if(!o.position&&o.ghostCenter){   // turned, rolled, flipped: the gyro says where the object is, so segment right there
+      const m=inMedia({x:o.ghostCenter.x,y:o.ghostCenter.y,width:0,height:0});o.reseed=true;void discover({point:{x:m.x,y:m.y}},o);return}
      void discover({propagation:{previousImageDataUrl,selection:{x:s.x,y:s.y,width:s.width,height:s.height,polygon:s.polygon,contours:s.contours}}},o);
     },1200);return()=>clearInterval(timer);
  },[mode,ready]);

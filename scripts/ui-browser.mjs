@@ -177,7 +177,7 @@ try {
     const p = await c.newPage();
     await p.route('**/agent/segment', r => r.fulfill({ json: { selections: [sel(.25, .33, 'product')], selection: sel(.25, .33, 'product'), model: 'stub' } }));
     await p.route('**/api/research', () => {});   // research never answers: only the outline behaviour is under test
-    await p.goto(server.resolvedUrls.local[0]); await p.getByRole('button', { name: 'Touch · Draw' }).click(); await p.mouse.click(110, 270);
+    await p.goto(server.resolvedUrls.local[0]); await p.waitForFunction(() => document.querySelector('video')?.readyState >= 2); await p.getByRole('button', { name: 'Touch · Draw' }).click(); await p.mouse.click(110, 270);
     await p.waitForFunction(() => document.querySelectorAll('.contours path').length >= 1);
     await p.waitForTimeout(500); await p.evaluate(() => { window.__hide = true; });
     await p.waitForFunction(() => document.querySelectorAll('.contours.ghost path').length >= 1, null, { timeout: 15000 });   // held, not vanished
@@ -196,12 +196,13 @@ try {
         offers: [{ id: 'offer-0', title: 'Nintendo Switch OLED White', url: 'https://shop0.example.org/p/0', merchant: 'shop0.example.org', condition: 'new', availability: 'in_stock', price: 446310, currency: 'KRW', checkedAt: t0, evidence: ['seen'], confidence: .8 }],
         lowest: 'offer-0', highest: 'offer-0', representative: { min: 446310, median: 446310, max: 446310, currency: 'KRW', condition: 'new', basis: 'item_only', sampleCount: 1 }, tools: ['agent_web_search'], startedAt: t0, completedAt: t0 };
       r.fulfill({ json: polls === 1 ? ev({ candidate: { name: 'Nintendo Switch OLED' }, activity: [idStep] })
-        : polls === 2 ? ev({ activity: [idStep, q, { kind: 'open', text: 'enuri.com', agent: 1 }] })
+        : polls === 2 ? ev({ preliminary: { price: 450000, count: 3 }, activity: [idStep, q, { kind: 'open', text: 'enuri.com', agent: 1 }] })
         : polls === 3 ? ev({ activity: [idStep, q, { kind: 'open', text: 'enuri.com', agent: 1 }, { kind: 'agentDone', n: 6, agent: 0 }, { kind: 'agentDone', n: 5, agent: 1 }, { kind: 'compare', n: 11 }] })
         : polls < 6 ? ev({ activity: [idStep, { kind: 'compare', n: 11 }] }) : ev({ result: done }, 'completed') }); });
     await p.goto(server.resolvedUrls.local[0]); await p.waitForFunction(() => document.querySelector('video')?.readyState >= 2); await p.getByRole('button', { name: 'Touch · Draw' }).click(); await p.mouse.click(110, 270);
     await p.waitForFunction(() => /Identified: Nintendo Switch OLED/.test(document.querySelector('.card .card-sub')?.innerText || ''), null, { timeout: 15000 }).catch(async e => { console.log('debug polls=' + polls, JSON.stringify(await p.evaluate(() => [...document.querySelectorAll('.card')].map(c => c.dataset.phase + ' | ' + c.innerText.replace(/\\n/g, ' / '))))); throw e; });   // the name arrives first
-    await p.waitForFunction(() => /Reading enuri\.com/.test(document.querySelector('.card .card-sub')?.innerText || ''), null, { timeout: 15000 });               // then what the agents do
+    await p.waitForFunction(() => /Preliminary . 3 listings/.test(document.querySelector('.card .card-sub')?.innerText || ''), null, { timeout: 15000 });               // then what the agents do
+    await p.waitForFunction(() => /~₩450,000/.test(document.querySelector('.card')?.innerText || ''), null, { timeout: 15000 });   // preliminary price while the agents still work
     await p.locator('.card').first().click();
     const work = p.locator('.work'); await work.waitFor();
     assert.match(await work.innerText(), /Working on it/);
