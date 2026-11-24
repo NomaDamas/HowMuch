@@ -15,7 +15,7 @@ import GhostLayer from './GhostLayer.jsx';
 import {gyroSupported,needsGyroPermission,requestGyro} from './lib/gyro-world.js';
 import './app.css';
 import {t,useLang,locale} from './lib/i18n.js';
-import {ItemBar,Hud,Leader,Detail,ItemsSheet,SettingsSheet,StarGate,StarSheet,shouldAskStar,nameOf,stateText,priceOf} from './ui.jsx';
+import {ItemBar,Hud,Leader,Detail,ItemsSheet,SettingsSheet,StarGate,StarSheet,shouldAskStar,imageSearchOn,nameOf,stateText,priceOf} from './ui.jsx';
 
 // The research agents read the pictures at a few hundred pixels anyway; sending camera-sized images only adds upload and vision time.
 const shrinkCanvas=(c,max)=>{const k=Math.min(1,max/Math.max(c.width,c.height));if(k>=1)return c;const o=document.createElement('canvas');o.width=Math.round(c.width*k);o.height=Math.round(c.height*k);o.getContext('2d').drawImage(c,0,0,o.width,o.height);return o};
@@ -82,7 +82,7 @@ function App(){
      else if(e.phase==='progress'){o.activity=Array.isArray(e.activity)?e.activity.slice(-8):[...(o.activity||[]),e.step].filter(Boolean).slice(-8);if(o.phase==='identifying')o.phase='loading';sync()}};
    try{
     const request=o.original ?? {imageDataUrl:shrinkCanvas(source,768).toDataURL('image/jpeg',.8),cutoutDataUrl:await shrinkDataUrl(o.selection.cutoutDataUrl||cutout(source,o.selection),512),selection:{x:o.selection.x,y:o.selection.y,width:o.selection.width,height:o.selection.height,polygon:o.selection.polygon},locale:locale()};
-    const r=await new HttpResearchProvider(providerConfig().researchEndpoint,providerConfig().jobsEndpoint).research({...request,...(labelDataUrl&&{labelDataUrl}),...(modelHint&&{modelHint})},o.controller.signal,onPhase);
+    const r=await new HttpResearchProvider(providerConfig().researchEndpoint,providerConfig().jobsEndpoint).research({...request,...(labelDataUrl&&{labelDataUrl}),...(modelHint&&{modelHint}),...(imageSearchOn()&&{imageSearch:true})},o.controller.signal,onPhase);
     o.original=(r.status==='followup_required'||r.pricingMode==='type_estimate')?request:null;
     if(!live())return;
     const candidate=r.candidates?.[0];if(candidate&&person(candidate)){o.phase='person';o.result=null;o.coins=funRef.current?mint():null}else{o.result=r;o.phase=r.status||'complete'}

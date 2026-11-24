@@ -34,6 +34,10 @@ phone <--GET /api/jobs/:id (poll; resumable after background)-- result with evid
   search tool read, so no scraper is exposed to bans.
 * **Currency:** non-KRW listings are converted with ECB rates, and say so in their evidence.
 
+## Image search (optional)
+
+Settings > Advanced > "Image search (Google)". Off by default; the switch is disabled when the server has no `GOOGLE_VISION_API_KEY`. When on, the cut-out photo (only that, not the scene) is sent to Google Cloud Vision Web Detection before the agents start (5 s limit). Its best guess, related names and pages with similar pictures go into every agent's prompt as untrusted leads; the agents still verify names and prices with their own searches. If the lookup fails or is empty, research runs as before. Server-side off switch: `HOWMUCH_IMAGE_SEARCH=off`. To compare accuracy: `EVAL_IMAGE_SEARCH=1 npm run eval:prices` against the same run without it.
+
 ## Speed
 
 Measured on real runs (hosted web search, 3 parallel agents): one agent takes 50-100 s, a full result 65-90 s. What helped:
