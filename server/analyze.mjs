@@ -72,7 +72,7 @@ export async function researchAgent(input, signal, onPhase) {
 }
 const imageValid = v=> typeof v==='string' && /^data:image\/(jpeg|jpg|png|webp);base64,/i.test(v) && v.length<=12000000;
 export function gateway({phoneOrigin, research=researchAgent, agentOrigin='http://127.0.0.1:8791'}={}) {
-  const pairing=pairingStore(), jobs=jobStore(), star=githubStar(), gh=ghLocal(), budget=new Map(); let active=0;
+  const pairing=pairingStore(Date.now,{file:process.env.HOWMUCH_PAIRING_FILE||resolve('.howmuch','pairing.json')}), jobs=jobStore(), star=githubStar(), gh=ghLocal(), budget=new Map(); let active=0;
   function rate(owner) {
     const t=Date.now(); for(const [id,v] of budget) if(v.until<=t) budget.delete(id);
     const v=budget.get(owner)||{until:t+60000,n:0}; budget.set(owner,v); return ++v.n<=30;
