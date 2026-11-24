@@ -132,3 +132,4 @@ button:focus-visible,a:focus-visible,input:focus-visible{outline:2px solid var(-
 .star-code{padding:10px 20px;border-radius:14px;background:rgba(255,255,255,.14);border:1px solid var(--line);font:700 26px ui-monospace,monospace;letter-spacing:3px}
 .later{min-height:44px;padding:0 18px;border:0;background:none;opacity:.6}
 @media (prefers-reduced-motion:reduce){.card::before,.contours path,.reticle,.leader .anchor-ripple,.ghost-arrow b,.sheet{animation:none}.card{transition:none}}
+.star-as{font-weight:600;color:var(--accent)}.star-sheet{display:grid;justify-items:center;gap:12px;text-align:center;padding-bottom:12px}.star-sheet h2,.star-sheet p{margin:0}

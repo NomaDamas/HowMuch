@@ -15,7 +15,7 @@ import GhostLayer from './GhostLayer.jsx';
 import {gyroSupported,needsGyroPermission,requestGyro} from './lib/gyro-world.js';
 import './app.css';
 import {t,useLang,locale} from './lib/i18n.js';
-import {ItemBar,Hud,Leader,Detail,ItemsSheet,SettingsSheet,StarGate,shouldAskStar,nameOf,stateText,priceOf} from './ui.jsx';
+import {ItemBar,Hud,Leader,Detail,ItemsSheet,SettingsSheet,StarGate,StarSheet,shouldAskStar,nameOf,stateText,priceOf} from './ui.jsx';
 
 const MIN_AREA=.003; // below ~0.3% of the frame a selection is a sliver (a cable, an edge), not an object
 const MAX_JOBS=4;
@@ -40,7 +40,7 @@ function App(){
  const v=useRef(null),stage=useRef(null),pen=useRef(null),stream=useRef(null),alive=useRef(true),cameraJob=useRef(0);
  const segmentController=useRef(null),ignored=useRef([]);
  useLang();
- const [list,setList]=useState(false),[gyro,setGyro]=useState(false),[filter,setFilter]=useState(null),[gate,setGate]=useState(shouldAskStar);
+ const [list,setList]=useState(false),[gyro,setGyro]=useState(false),[filter,setFilter]=useState(null),[gate,setGate]=useState(shouldAskStar),[starSheet,setStarSheet]=useState(false);
  useEffect(()=>{if(gyroSupported()&&!needsGyroPermission())setGyro(true)},[]);
  async function toggleGyro(){if(gyro){setGyro(false);return}setGyro(await requestGyro());}
  const jobs=useRef(new Map()),epoch=useRef(0),sequence=useRef(0),gesture=useRef(null),fade=useRef(),hold=useRef(),since=useRef(0);
@@ -212,7 +212,8 @@ function App(){
    {gate&&<StarGate onDone={()=>setGate(false)}/>}
   </section>
   {list&&<ItemsSheet items={items} fun={fun} close={()=>setList(false)} open={id=>{setList(false);setDetail(id)}} cancel={cancelJob}/>}
-  {settings&&<SettingsSheet close={()=>setSettings(false)} fun={fun} setFun={enableFun} pair={()=>{setSettings(false);setPair(true)}}/>}
+  {settings&&<SettingsSheet close={()=>setSettings(false)} fun={fun} setFun={enableFun} pair={()=>{setSettings(false);setPair(true)}} star={()=>{setSettings(false);setStarSheet(true)}}/>}
+  {starSheet&&<StarSheet close={()=>setStarSheet(false)}/>}
   <Pairing open={pair} onClose={()=>setPair(false)}/>
   {selected&&<Detail o={selected} fun={fun} beginLabel={()=>beginLabel(jobs.current.get(selected.id))} refine={text=>refineModel(selected.id,text)} pause={pauseForSpatial} resume={resumeFromSpatial} close={()=>setDetail(null)} click={()=>note({mode,outcome:'source_click',sourceClicks:1})}/>}
   </main>

@@ -30,4 +30,5 @@ npm test
 
 * Research is agent-only (`server/agent-research.mjs`): do not add crawlers, scrapers, browsers or search-engine scraping.
 * UI text goes through `src/lib/i18n.js` (English default, Korean switchable); do not hard-code user-facing strings.
+* Tests must never press a real GitHub star: browser tests stub `/api/github/**`, and unit tests inject `gh`. Do not run anything that clicks the star button against a live server while `gh` is signed in.
 * Run `npm test`, `node scripts/camera-browser.mjs` and `node scripts/ui-browser.mjs` after UI changes.

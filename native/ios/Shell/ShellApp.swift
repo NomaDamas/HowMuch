@@ -7,8 +7,14 @@ import WebKit
 @main final class ShellApp: UIResponder, UIApplicationDelegate {
     var window: UIWindow?
     func application(_ application: UIApplication, didFinishLaunchingWithOptions options: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-        let w = UIWindow(frame: UIScreen.main.bounds); w.rootViewController = ShellController()
-        window = w; w.makeKeyAndVisible(); return true
+        let controller = ShellController()
+        let w = UIWindow(frame: UIScreen.main.bounds); w.rootViewController = controller
+        window = w; w.makeKeyAndVisible()
+        if let url = options?[.url] as? URL { controller.openLink(url) }
+        return true
+    }
+    func application(_ app: UIApplication, open url: URL, options: [UIApplication.OpenURLOptionsKey: Any] = [:]) -> Bool {
+        (window?.rootViewController as? ShellController)?.openLink(url); return true
     }
 }
 
@@ -19,6 +25,26 @@ final class ShellController: UIViewController, WKNavigationDelegate, WKUIDelegat
         if let s = UserDefaults.standard.string(forKey: key), let u = URL(string: s) { return u }
         let d = Bundle.main.object(forInfoDictionaryKey: "HowMuchDefaultURL") as? String ?? "http://127.0.0.1:5173"
         return URL(string: d)!
+    }
+    /// howmuch://open?url=<https pairing link>: the desktop pairing QR. Only private-network or local hosts are accepted, so a
+    /// web page cannot point the app (and its camera permission) at an arbitrary site. The origin is remembered; the one-time
+    /// pairing fragment is used once and not stored.
+    func openLink(_ link: URL) {
+        guard link.scheme == "howmuch", link.host == "open",
+              let raw = URLComponents(url: link, resolvingAgainstBaseURL: false)?.queryItems?.first(where: { $0.name == "url" })?.value,
+              let target = URL(string: raw), ["https", "http"].contains(target.scheme ?? ""), let host = target.host, ShellController.isLocalHost(host),
+              var origin = URLComponents(url: target, resolvingAgainstBaseURL: false) else { NSLog("HowMuch ignored link"); return }
+        origin.path = ""; origin.query = nil; origin.fragment = nil
+        if let o = origin.string { UserDefaults.standard.set(o, forKey: key) }
+        NSLog("HowMuch opening pairing link for %@", host)
+        if web != nil { web.load(URLRequest(url: target)) } else { pendingLink = target }
+    }
+    private var pendingLink: URL?
+    static func isLocalHost(_ h: String) -> Bool {
+        if h == "localhost" || h.hasSuffix(".local") { return true }
+        let p = h.split(separator: ".").compactMap { Int($0) }
+        guard p.count == 4 else { return false }
+        return p[0] == 10 || p[0] == 127 || (p[0] == 192 && p[1] == 168) || (p[0] == 172 && (16...31).contains(p[1])) || (p[0] == 169 && p[1] == 254)
     }
     override var prefersStatusBarHidden: Bool { true }
     override var prefersHomeIndicatorAutoHidden: Bool { true }
@@ -47,7 +73,8 @@ var md=navigator.mediaDevices;if(md&&md.getUserMedia){var g=md.getUserMedia.bind
         web.isOpaque = false; web.backgroundColor = .black; web.scrollView.backgroundColor = .black
         web.scrollView.contentInsetAdjustmentBehavior = .never; web.scrollView.bounces = false
         if #available(iOS 16.4, *) { web.isInspectable = true }
-        view.addSubview(web); load()
+        view.addSubview(web)
+        if let link = pendingLink { pendingLink = nil; web.load(URLRequest(url: link)) } else { load() }
     }
     override func viewDidAppear(_ animated: Bool) { super.viewDidAppear(animated); becomeFirstResponder() }
     private func load() { NSLog("HowMuch loading %@", serverURL.absoluteString); web.load(URLRequest(url: serverURL, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 15)) }
@@ -79,9 +106,19 @@ var md=navigator.mediaDevices;if(md&&md.getUserMedia){var g=md.getUserMedia.bind
     }
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) { NSLog("HowMuch load failed: %@", error.localizedDescription); askServer(error: error.localizedDescription) }
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) { NSLog("HowMuch page %@", String(describing: message.body)) }
-    private var autotested = false
+    private var autotested = false, pairTested = false
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         NSLog("HowMuch loaded %@", webView.url?.absoluteString ?? "")
+        // `-howmuch.pairtest 1`: accept the pairing dialog (test devices only), then report the API status seen from the phone.
+        if UserDefaults.standard.bool(forKey: "howmuch.pairtest"), !pairTested {
+            pairTested = true
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3) { webView.evaluateJavaScript("(function(){var b=[].slice.call(document.querySelectorAll('button')).filter(function(x){return /Connect to this server|이 서버에 연결/.test(x.innerText)})[0];if(b){b.click();return 'clicked'}return 'no pairing dialog'})()") { r, _ in NSLog("HowMuch pairtest %@", String(describing: r)) } }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 10) {
+                webView.callAsyncJavaScript("const a=await fetch('/api/github/star/status');const b=await fetch('/api/github/star/status');return a.status+' '+(await a.text())", arguments: [:], in: nil, in: .page) { res in
+                    if case .success(let v) = res { NSLog("HowMuch status-after-pairing %@", String(describing: v)) } else { NSLog("HowMuch status-after-pairing failed") }
+                }
+            }
+        }
         // `-howmuch.autotest 1`: skip the star prompt once and report what the page shows (for remote verification).
         guard UserDefaults.standard.bool(forKey: "howmuch.autotest"), !autotested else { return }
         autotested = true

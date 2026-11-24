@@ -126,7 +126,7 @@ export function ItemsSheet({ items, fun, close, open, cancel }) {
   </Sheet>;
 }
 
-export function SettingsSheet({ close, fun, setFun, pair }) {
+export function SettingsSheet({ close, fun, setFun, pair, star }) {
   const lang = useLang();
   return <Sheet label={t('sheet.settings')} onClose={close}>
     <h2>{t('sheet.settings')}</h2>
@@ -135,7 +135,7 @@ export function SettingsSheet({ close, fun, setFun, pair }) {
     <div className="row"><span>{t('settings.fun')}</span><button className="switch" role="switch" aria-checked={fun} aria-label={t('settings.fun')} onClick={() => setFun(!fun)} /></div>
     <div className="settings-links">
       <button className="option" onClick={pair}>{t('settings.pair')}</button>
-      <a className="option" href={REPO_URL} target="_blank" rel="noreferrer"><Star size={18} />{t('settings.star')}</a>
+      <button className="option" onClick={star}><Star size={18} />{t('settings.star')}</button>
       <a className="option" href={REPO_URL} target="_blank" rel="noreferrer">{t('settings.source')}</a>
     </div>
     <p className="about">{t('settings.about')}</p>
@@ -144,47 +144,76 @@ export function SettingsSheet({ close, fun, setFun, pair }) {
 
 const STAR_KEY = 'howmuch-starred';
 export const hasStarred = () => { try { return localStorage.getItem(STAR_KEY) === '1'; } catch { return false; } };
-/** Phones and the app shells never see the star prompt on load; it is only for the desktop web app. */
+const markStarred = () => { try { localStorage.setItem(STAR_KEY, '1'); } catch { /* ignore */ } };
+/** Phones and the app shells never see the star prompt on load; it is only for the desktop web app (Settings works everywhere). */
 export const onPhone = () => typeof navigator !== 'undefined' && /(HowMuchApp|iPhone|iPad|Android)/i.test(navigator.userAgent);
 export const shouldAskStar = () => !hasStarred() && !onPhone();
-const markStarred = () => { try { localStorage.setItem(STAR_KEY, '1'); } catch { /* ignore */ } };
 
-/** Shown before the camera until the user has starred the repo. One star button; GitHub device-flow approval stars it
- *  for them. Without a configured GitHub OAuth app it opens the repo page and asks the user to confirm. */
-export function StarGate({ onDone }) {
+const api = async (url, init) => { const r = await fetch(url, init); if (!(r.headers.get('content-type') || '').includes('json')) throw Error('not_json'); return { ok: r.ok, status: r.status, body: await r.json() }; };
+
+/** The star button and everything behind it. Nothing is starred until the user taps the star. With the GitHub CLI signed in
+ *  on the computer running HowMuch, the button names the account ("Star as @you"); if the CLI is not signed in, one tap
+ *  starts the sign-in and shows the one-time code; otherwise a GitHub OAuth app (device flow) or the repo page is used. */
+export function StarFlow({ onDone }) {
   useLang();
-  const [phase, setPhase] = useState('idle'), [code, setCode] = useState(null), [error, setError] = useState('');
+  const [gh, setGh] = useState(null), [phase, setPhase] = useState('loading'), [code, setCode] = useState(null), [error, setError] = useState('');
   const timer = useRef(null);
   useEffect(() => () => clearTimeout(timer.current), []);
-  const finish = () => { markStarred(); setPhase('done'); setTimeout(onDone, 900); };
-  async function press() {
+  const finish = (already) => { markStarred(); setPhase(already ? 'already' : 'done'); setTimeout(onDone, 1200); };
+  const refresh = async () => { try { const r = await api('/api/github/star/status'); setGh(r.body); return r.body; } catch { const none = { enabled: false }; setGh(none); return none; } };
+  useEffect(() => { (async () => { const s = await refresh(); if (s.starred) finish(true); else setPhase('ready'); })(); }, []);
+  const local = gh?.enabled && gh.installed;
+
+  async function starNow() {                       // the tap is the approval
+    setError(''); setPhase('working');
+    try { const r = await api('/api/github/star/local', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ confirm: true }) }); if (r.ok && r.body.starred) return finish(); throw Error(); }
+    catch { setPhase('ready'); setError(t('star.fail')); }
+  }
+  async function signIn() {
+    setError(''); setPhase('working');
+    try {
+      const r = await api('/api/github/star/login', { method: 'POST' }); if (!r.ok) throw Error();
+      setCode(r.body); setPhase('code');
+      const poll = async () => { const s = await refresh(); if (s.signedIn) { setCode(null); setPhase('ready'); if (s.starred) finish(true); } else timer.current = setTimeout(poll, 3000); };
+      timer.current = setTimeout(poll, 3000);
+    } catch { setPhase('ready'); setError(t('star.fail')); }
+  }
+  async function oauth() {                         // shared server with a GitHub OAuth app: device flow
     setError('');
     try {
-      const r = await fetch('/api/github/star/start', { method: 'POST' });
-      if (r.status === 501) { window.open(REPO_URL, '_blank', 'noopener'); setPhase('manual'); return; }
-      if (!r.ok) throw Error();
-      const d = await r.json(); setCode(d); setPhase('code');
-      window.open(d.verificationUri, '_blank', 'noopener');
-      const poll = async () => {
-        try {
-          const p = await (await fetch('/api/github/star/poll', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ pollId: d.pollId }) })).json();
-          if (p.starred) return finish();
-          if (p.error) throw Error(p.error);
-          timer.current = setTimeout(poll, Math.max(3, p.interval || d.interval || 5) * 1000);
-        } catch { setPhase('idle'); setError(t('star.fail')); }
-      };
+      const r = await api('/api/github/star/start', { method: 'POST' });
+      if (r.status === 501) { window.open(REPO_URL, '_blank', 'noopener'); return setPhase('manual'); }
+      if (!r.ok) throw Error(); const d = r.body; setCode({ code: d.userCode, url: d.verificationUri }); setPhase('code'); window.open(d.verificationUri, '_blank', 'noopener');
+      const poll = async () => { try { const p = await api('/api/github/star/poll', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ pollId: d.pollId }) }); if (p.body.starred) return finish(); if (p.body.error) throw Error(); timer.current = setTimeout(poll, Math.max(3, p.body.interval || d.interval || 5) * 1000); } catch { setPhase('ready'); setError(t('star.fail')); } };
       timer.current = setTimeout(poll, (d.interval || 5) * 1000);
     } catch { setError(t('star.fail')); }
   }
+  const press = phase === 'manual' ? () => finish() : local && gh.signedIn ? starNow : local ? signIn : oauth;
+  const label = phase === 'loading' ? t('star.checking') : local && gh.signedIn ? t('star.as', { user: gh.user }) : local ? t('star.signin') : '';
+  return <>
+    <button className={'star-btn ' + (phase === 'done' || phase === 'already' ? 'done' : '')} aria-label={t('star.aria')} onClick={press} disabled={['loading', 'working', 'code', 'done', 'already'].includes(phase)}>
+      {phase === 'done' || phase === 'already' ? <Check size={56} /> : <Star size={56} fill="currentColor" />}
+    </button>
+    {label && phase !== 'done' && phase !== 'already' && <p className="star-as">{label}</p>}
+    {phase === 'code' && code && <><p>{t('star.codeHelp')}</p><div className="star-code">{code.code || code.userCode}</div><p>{t('star.waiting')}</p></>}
+    {phase === 'manual' && <p>{t('star.done')} ⭐</p>}
+    {phase === 'done' && <p>{t('star.thanks')}</p>}{phase === 'already' && <p>{t('star.already')}</p>}
+    {error && <p role="alert">{error}</p>}
+  </>;
+}
+
+/** Shown before the camera on the desktop web app until the repo is starred; "Later" skips it. */
+export function StarGate({ onDone }) {
+  useLang();
   return <div className="stargate" role="dialog" aria-label={t('star.title')}>
     <h1>{t('star.title')}</h1><p>{t('star.sub')}</p>
-    <button className={'star-btn ' + (phase === 'done' ? 'done' : '')} aria-label={t('star.aria')} onClick={phase === 'manual' ? finish : press} disabled={phase === 'code' || phase === 'done'}>
-      {phase === 'done' ? <Check size={56} /> : <Star size={56} fill="currentColor" />}
-    </button>
-    {phase === 'code' && code && <><p>{t('star.code')}</p><div className="star-code">{code.userCode}</div><p>{t('star.waiting')}</p></>}
-    {phase === 'manual' && <p>{t('star.done')} ⭐</p>}
-    {phase === 'done' && <p>{t('star.thanks')}</p>}
-    {error && <p role="alert">{error}</p>}
-    {phase !== 'done' && <button className="later" onClick={onDone}>{t('star.later')}</button>}
+    <StarFlow onDone={onDone} />
+    <button className="later" onClick={onDone}>{t('star.later')}</button>
   </div>;
+}
+
+/** The same star flow from Settings on any device, app included. */
+export function StarSheet({ close }) {
+  useLang();
+  return <Sheet label={t('star.title')} onClose={close}><div className="star-sheet"><h2>{t('star.title')}</h2><p>{t('star.sub')}</p><StarFlow onDone={close} /></div></Sheet>;
 }

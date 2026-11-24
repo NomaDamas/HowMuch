@@ -7,9 +7,11 @@ import { createServer } from 'vite';
 const shots = process.env.HOWMUCH_SHOTS;
 const server = await createServer({ cacheDir: 'node_modules/.vite-howmuch-ui', server: { host: '127.0.0.1', port: 0, hmr: false, watch: null }, logLevel: 'error' });
 let browser;
+// SAFETY: tests must never press a real star. Every context answers the star endpoints itself; specific scenarios override it.
+const newCtx = async opts => { const c = await browser.newContext(opts); await c.route('**/api/github/**', r => r.fulfill({ status: r.request().method() === 'GET' ? 200 : 501, json: { enabled: false } })); return c; };
 try {
   await server.listen(); browser = await chromium.launch();
-  const ctx = await browser.newContext({ viewport: { width: 390, height: 780 }, hasTouch: true, deviceScaleFactor: 2 });
+  const ctx = await newCtx({ viewport: { width: 390, height: 780 }, hasTouch: true, deviceScaleFactor: 2 });
   const page = await ctx.newPage(); const errors = []; page.on('pageerror', e => errors.push(e.message));
   await ctx.addInitScript(() => {
     window.__cameraStarts = 0;
@@ -110,13 +112,62 @@ try {
   await page.waitForFunction(() => document.querySelectorAll('.contours.ghost path').length >= 1, null, { timeout: 10000 });
   // 8. Phones and the app shell never see the star prompt on load; the camera just starts
   for (const [label, ua] of [['iPhone Safari', 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1'], ['app shell', 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 HowMuchApp']]) {
-    const pctx = await browser.newContext({ viewport: { width: 390, height: 780 }, userAgent: ua });
+    const pctx = await newCtx({ viewport: { width: 390, height: 780 }, userAgent: ua });
     await pctx.addInitScript(() => { window.__cameraStarts = 0; const c = document.createElement('canvas'); c.width = 480; c.height = 720; c.getContext('2d').fillRect(0, 0, 480, 720); Object.defineProperty(navigator.mediaDevices, 'getUserMedia', { value: async () => { window.__cameraStarts++; return c.captureStream(10); } }); });
     const phone = await pctx.newPage(); await phone.goto(server.resolvedUrls.local[0]);
     await phone.waitForFunction(() => window.__cameraStarts === 1, null, { timeout: 15000 });
     assert.equal(await phone.locator('.stargate').count(), 0, label + ' must not show the star prompt');
     await pctx.close();
   }
+  // 9. Real star actions on screen, always after the user's tap: signed-in gh, sign-in on screen, and Settings on a phone
+  const camStub = () => { window.__cameraStarts = 0; const c = document.createElement('canvas'); c.width = 480; c.height = 720; c.getContext('2d').fillRect(0, 0, 480, 720); Object.defineProperty(navigator.mediaDevices, 'getUserMedia', { value: async () => { window.__cameraStarts++; return c.captureStream(10); } }); };
+  const IPHONE = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1 HowMuchApp';
+  const signedIn = { enabled: true, installed: true, signedIn: true, user: 'octo', starred: false, oauth: false };
+  {   // A) gh signed in: the button names the account; nothing is sent until the tap
+    const c = await newCtx({ viewport: { width: 390, height: 780 } }); await c.addInitScript(camStub); const p = await c.newPage(); let posted = null;
+    await p.route('**/api/github/star/status', r => r.fulfill({ json: signedIn }));
+    await p.route('**/api/github/star/local', r => { posted = r.request().postDataJSON(); r.fulfill({ json: { starred: true, user: 'octo' } }); });
+    await p.goto(server.resolvedUrls.local[0]); await p.getByText('Star as @octo').waitFor();
+    assert.equal(posted, null, 'nothing is starred before the tap');
+    if (shots) await p.screenshot({ path: shots + '/ui-6-star-as.png' });
+    await p.getByRole('button', { name: 'Star HowMuch on GitHub' }).click();
+    await p.waitForFunction(() => localStorage.getItem('howmuch-starred') === '1'); assert.deepEqual(posted, { confirm: true });
+    await p.locator('.stargate').waitFor({ state: 'detached' }); await c.close();
+  }
+  {   // B) gh not signed in: one tap starts the sign-in, the code is shown, then the account appears
+    const c = await newCtx({ viewport: { width: 390, height: 780 } }); await c.addInitScript(camStub); const p = await c.newPage(); let loggedIn = 0, polls = 0;
+    await p.route('**/api/github/star/status', r => { if (loggedIn) polls++; r.fulfill({ json: loggedIn && polls >= 1 ? signedIn : { enabled: true, installed: true, signedIn: false, starred: false, oauth: false } }); });
+    await p.route('**/api/github/star/login', r => { loggedIn = 1; r.fulfill({ json: { code: 'ABCD-1234', url: 'https://github.com/login/device' } }); });
+    await p.goto(server.resolvedUrls.local[0]); await p.getByText('Sign in with GitHub to star').waitFor();
+    await p.getByRole('button', { name: 'Star HowMuch on GitHub' }).click();
+    await p.getByText('ABCD-1234').waitFor(); await p.getByText('Star as @octo').waitFor({ timeout: 15000 }); await c.close();
+  }
+  {   // C) a phone (app shell) never prompts on load, but Settings can star for real
+    const c = await newCtx({ viewport: { width: 390, height: 780 }, userAgent: IPHONE }); await c.addInitScript(camStub); const p = await c.newPage(); let posted = null;
+    await p.route('**/api/github/star/status', r => r.fulfill({ json: signedIn }));
+    await p.route('**/api/github/star/local', r => { posted = r.request().postDataJSON(); r.fulfill({ json: { starred: true, user: 'octo' } }); });
+    await p.goto(server.resolvedUrls.local[0]); await p.waitForFunction(() => window.__cameraStarts === 1);
+    assert.equal(await p.locator('.stargate').count(), 0);
+    await p.getByRole('button', { name: 'Settings' }).click(); await p.getByRole('button', { name: 'Star on GitHub' }).click();
+    await p.getByText('Star as @octo').waitFor(); assert.equal(posted, null);
+    await p.getByRole('button', { name: 'Star HowMuch on GitHub' }).click();
+    await p.waitForFunction(() => localStorage.getItem('howmuch-starred') === '1'); assert.deepEqual(posted, { confirm: true });
+    await p.getByRole('dialog').waitFor({ state: 'detached' }); await c.close();
+  }
+  // 10. Pairing QR: opens the HowMuch app directly (howmuch://open?url=...) or the browser, switchable on the desktop dialog
+  {
+    const c = await newCtx({ viewport: { width: 390, height: 780 } }); await c.addInitScript(camStub); const p = await c.newPage();
+    await p.route('**/v1/pairing/sessions', r => r.fulfill({ status: 201, json: { sessionId: 's1', expiresAt: new Date(Date.now() + 3e5).toISOString(), url: 'https://192.168.0.3:8443/#pair=s1.tok' } }));
+    await c.addInitScript(() => { try { localStorage.setItem('howmuch-starred', '1'); } catch {} });
+    await p.goto(server.resolvedUrls.local[0]);
+    await p.getByRole('button', { name: 'Settings' }).click(); await p.getByRole('button', { name: 'Connect phone (QR)' }).click();
+    const qr = p.getByRole('img'); await qr.waitFor(); const appQr = await qr.getAttribute('src');
+    await p.getByRole('button', { name: 'Browser' }).click();
+    await p.waitForFunction(old => document.querySelector('img')?.getAttribute('src') !== old, appQr);
+    await p.getByRole('button', { name: 'HowMuch app' }).click();
+    await p.waitForFunction(old => document.querySelector('img')?.getAttribute('src') === old, appQr);
+    await c.close();
+  }
   assert.deepEqual(errors, []);
-  console.log('PASS: star gate before camera, English default, Korean switch, compact card, filter bar, details behind a toggle, swipe/tap close, hidden scrollbars, no attribution on camera, person card without play-price wording, outline persists when the object is lost or the phone turns and returns, no star prompt on phones or the app shell.');
+  console.log('PASS: star gate before camera, English default, Korean switch, compact card, filter bar, details behind a toggle, swipe/tap close, hidden scrollbars, no attribution on camera, person card without play-price wording, outline persists when the object is lost or the phone turns and returns, no star prompt on phones or the app shell, real star actions only after a tap (signed-in gh, on-screen sign-in, Settings on a phone), pairing QR switchable between the app link and the browser link.');
 } finally { await browser?.close(); await server.close(); }

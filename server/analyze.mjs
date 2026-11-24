@@ -8,6 +8,7 @@ import { assertResearchEnvelope, isValidResearchInput } from './research-contrac
 import { pairingStore } from './pairing.mjs';
 import { jobStore } from './jobs.mjs';
 import { githubStar } from './github-star.mjs';
+import { ghLocal, localHost } from './gh-local.mjs';
 
 const timeout = () => Math.max(1000,Math.min(600000, Number(process.env.RESEARCH_TIMEOUT_MS)||180000));
 const json = (res,status,body,extra={}) => {
@@ -65,7 +66,7 @@ export async function researchAgent(input, signal, onPhase) {
 }
 const imageValid = v=> typeof v==='string' && /^data:image\/(jpeg|jpg|png|webp);base64,/i.test(v) && v.length<=12000000;
 export function gateway({phoneOrigin, research=researchAgent, agentOrigin='http://127.0.0.1:8791'}={}) {
-  const pairing=pairingStore(), jobs=jobStore(), star=githubStar(), budget=new Map(); let active=0;
+  const pairing=pairingStore(), jobs=jobStore(), star=githubStar(), gh=ghLocal(), budget=new Map(); let active=0;
   function rate(owner) {
     const t=Date.now(); for(const [id,v] of budget) if(v.until<=t) budget.delete(id);
     const v=budget.get(owner)||{until:t+60000,n:0}; budget.set(owner,v); return ++v.n<=30;
@@ -107,6 +108,15 @@ export function gateway({phoneOrigin, research=researchAgent, agentOrigin='http:
         for(const e of job.events)send(e); if(res.writableEnded)return;
         job.listeners.add(send); const timer=setInterval(()=>res.write(': keepalive\n\n'),15000);
         res.on('close',()=>{clearInterval(timer);job.listeners.delete(send)}); return;
+      }
+      // Star with the GitHub CLI signed in on this machine: local servers only, fixed repo, and only after the user's approval.
+      if(['/api/github/star/status','/api/github/star/local','/api/github/star/login'].includes(route)){
+        if(!localHost(host)) return json(res,404,{error:'not_found'});
+        if(!rate(owner)) return json(res,429,{error:'rate_limited'},{'retry-after':'60'});
+        if(req.method==='GET' && route.endsWith('/status')) return json(res,200,{...gh.status(),oauth:star.configured()});
+        if(req.method==='POST' && route.endsWith('/local')){ if((await readBody(req,1024))?.confirm!==true) return json(res,400,{error:'confirmation_required'}); const o=gh.star(); return json(res,o.status,o.body); }
+        if(req.method==='POST' && route.endsWith('/login')){ const o=await gh.startLogin(); return json(res,o.status,o.body); }
+        return json(res,405,{error:'method_not_allowed'});
       }
       if(req.method==='POST' && route.startsWith('/api/github/star/')){
         if(!rate(owner)) return json(res,429,{error:'rate_limited'},{'retry-after':'60'});
