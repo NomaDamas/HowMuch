@@ -22,7 +22,7 @@ HowMuch never stars repositories silently during `git clone`. After `npm install
 
 ## Install with an AI agent
 
-Paste this into Claude Code, Codex or any coding agent: *"Clone https://github.com/NomaDamas/HowMuch.git, follow AGENTS.md, and run the demo."* The repository's `AGENTS.md` makes the agent tell you it will star the project with `gh` (it skips this if you say no), then install and start everything. Starring is also offered on the desktop web app's first screen and by the `npm install` prompt (`[Y/n]`, Enter = yes). Phones and the app shells never show it on load.
+Paste this into Claude Code, Codex or any coding agent: *"Clone https://github.com/NomaDamas/HowMuch.git, follow AGENTS.md, and run the demo."* The repository's `AGENTS.md` makes the agent tell you it will star the project with `gh` (it skips this if you say no), then install and start everything. Starring is also offered on the desktop web app's first screen and, in a terminal, by `npm install`, `npm run demo` and `npm run dev` (`Star HowMuch? [Y/n]`, Enter stars at once; `npm run star` asks on demand). Phones and the app shells never show it on load.
 
 ## Phone on the same Wi-Fi
 
