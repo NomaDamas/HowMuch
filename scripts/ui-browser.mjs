@@ -108,6 +108,15 @@ try {
   await page.waitForFunction(() => document.querySelectorAll('.contours.ghost path').length === 0 && document.querySelectorAll('.ghost-arrow').length >= 1, null, { timeout: 10000 });
   await page.evaluate(() => { window.__alpha = 0; });               // turn back: the outline returns on the same plane
   await page.waitForFunction(() => document.querySelectorAll('.contours.ghost path').length >= 1, null, { timeout: 10000 });
+  // 8. Phones and the app shell never see the star prompt on load; the camera just starts
+  for (const [label, ua] of [['iPhone Safari', 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1'], ['app shell', 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 HowMuchApp']]) {
+    const pctx = await browser.newContext({ viewport: { width: 390, height: 780 }, userAgent: ua });
+    await pctx.addInitScript(() => { window.__cameraStarts = 0; const c = document.createElement('canvas'); c.width = 480; c.height = 720; c.getContext('2d').fillRect(0, 0, 480, 720); Object.defineProperty(navigator.mediaDevices, 'getUserMedia', { value: async () => { window.__cameraStarts++; return c.captureStream(10); } }); });
+    const phone = await pctx.newPage(); await phone.goto(server.resolvedUrls.local[0]);
+    await phone.waitForFunction(() => window.__cameraStarts === 1, null, { timeout: 15000 });
+    assert.equal(await phone.locator('.stargate').count(), 0, label + ' must not show the star prompt');
+    await pctx.close();
+  }
   assert.deepEqual(errors, []);
-  console.log('PASS: star gate before camera, English default, Korean switch, compact card, filter bar, details behind a toggle, swipe/tap close, hidden scrollbars, no attribution on camera, person card without play-price wording, outline persists when the object is lost or the phone turns and returns.');
+  console.log('PASS: star gate before camera, English default, Korean switch, compact card, filter bar, details behind a toggle, swipe/tap close, hidden scrollbars, no attribution on camera, person card without play-price wording, outline persists when the object is lost or the phone turns and returns, no star prompt on phones or the app shell.');
 } finally { await browser?.close(); await server.close(); }

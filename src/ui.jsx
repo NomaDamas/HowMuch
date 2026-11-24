@@ -144,6 +144,9 @@ export function SettingsSheet({ close, fun, setFun, pair }) {
 
 const STAR_KEY = 'howmuch-starred';
 export const hasStarred = () => { try { return localStorage.getItem(STAR_KEY) === '1'; } catch { return false; } };
+/** Phones and the app shells never see the star prompt on load; it is only for the desktop web app. */
+export const onPhone = () => typeof navigator !== 'undefined' && /(HowMuchApp|iPhone|iPad|Android)/i.test(navigator.userAgent);
+export const shouldAskStar = () => !hasStarred() && !onPhone();
 const markStarred = () => { try { localStorage.setItem(STAR_KEY, '1'); } catch { /* ignore */ } };
 
 /** Shown before the camera until the user has starred the repo. One star button; GitHub device-flow approval stars it

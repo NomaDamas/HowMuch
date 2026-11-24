@@ -15,7 +15,7 @@ import GhostLayer from './GhostLayer.jsx';
 import {gyroSupported,needsGyroPermission,requestGyro} from './lib/gyro-world.js';
 import './app.css';
 import {t,useLang,locale} from './lib/i18n.js';
-import {ItemBar,Hud,Leader,Detail,ItemsSheet,SettingsSheet,StarGate,hasStarred,nameOf,stateText,priceOf} from './ui.jsx';
+import {ItemBar,Hud,Leader,Detail,ItemsSheet,SettingsSheet,StarGate,shouldAskStar,nameOf,stateText,priceOf} from './ui.jsx';
 
 const MIN_AREA=.003; // below ~0.3% of the frame a selection is a sliver (a cable, an edge), not an object
 const MAX_JOBS=4;
@@ -40,7 +40,7 @@ function App(){
  const v=useRef(null),stage=useRef(null),pen=useRef(null),stream=useRef(null),alive=useRef(true),cameraJob=useRef(0);
  const segmentController=useRef(null),ignored=useRef([]);
  useLang();
- const [list,setList]=useState(false),[gyro,setGyro]=useState(false),[filter,setFilter]=useState(null),[gate,setGate]=useState(()=>!hasStarred());
+ const [list,setList]=useState(false),[gyro,setGyro]=useState(false),[filter,setFilter]=useState(null),[gate,setGate]=useState(shouldAskStar);
  useEffect(()=>{if(gyroSupported()&&!needsGyroPermission())setGyro(true)},[]);
  async function toggleGyro(){if(gyro){setGyro(false);return}setGyro(await requestGyro());}
  const jobs=useRef(new Map()),epoch=useRef(0),sequence=useRef(0),gesture=useRef(null),fade=useRef(),hold=useRef(),since=useRef(0);

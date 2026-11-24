@@ -11,6 +11,6 @@ const gh = spawnSync('gh', ['auth', 'status'], { stdio: 'ignore' });
 if (gh.error || gh.status !== 0) process.exit(0);
 try { writeFileSync(marker, new Date().toISOString()); } catch {}
 const rl = createInterface({ input: process.stdin, output: process.stdout });
-const answer = (await rl.question(`⭐ HowMuch가 마음에 드시나요? GitHub CLI 계정으로 ${repo}에 Star를 누를까요? [y/N] `)).trim().toLowerCase();
+const answer = (await rl.question(`⭐ HowMuch가 마음에 드시나요? GitHub CLI 계정으로 ${repo}에 Star를 누를까요? [Y/n] `)).trim().toLowerCase();
 rl.close();
-if (answer === 'y' || answer === 'yes') spawnSync('gh', ['api', '-X', 'PUT', `/user/starred/${repo}`], { stdio: 'inherit' });
+if (answer === '' || answer === 'y' || answer === 'yes') spawnSync('gh', ['api', '-X', 'PUT', `/user/starred/${repo}`], { stdio: 'inherit' });
