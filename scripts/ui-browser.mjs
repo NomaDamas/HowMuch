@@ -120,7 +120,7 @@ try {
     await pctx.close();
   }
   // 9. Real star actions on screen, always after the user's tap: signed-in gh, sign-in on screen, and Settings on a phone
-  const camStub = () => { window.__cameraStarts = 0; const c = document.createElement('canvas'); c.width = 480; c.height = 720; c.getContext('2d').fillRect(0, 0, 480, 720); Object.defineProperty(navigator.mediaDevices, 'getUserMedia', { value: async () => { window.__cameraStarts++; return c.captureStream(10); } }); };
+  const camStub = () => { window.__cameraStarts = 0; const c = document.createElement('canvas'); c.width = 480; c.height = 720; const g = c.getContext('2d'); setInterval(() => { g.fillStyle = '#384858'; g.fillRect(0, 0, 480, 720); g.fillStyle = '#c9d4de'; g.fillRect(120, 250, 150, 150); }, 100); Object.defineProperty(navigator.mediaDevices, 'getUserMedia', { value: async () => { window.__cameraStarts++; return c.captureStream(10); } }); };
   const IPHONE = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1 HowMuchApp';
   const signedIn = { enabled: true, installed: true, signedIn: true, user: 'octo', starred: false, oauth: false };
   {   // A) gh signed in: the button names the account; nothing is sent until the tap
@@ -184,6 +184,33 @@ try {
     await p.waitForFunction(() => document.querySelectorAll('.contours.ghost path').length === 0, null, { timeout: 20000 });  // released after a few seconds
     await c.close();
   }
+  // 12. Live work state: while the agents research, the card and the detail sheet show what they are really doing
+  {
+    const c = await newCtx({ viewport: { width: 390, height: 780 }, userAgent: IPHONE }); await c.addInitScript(camStub); const p = await c.newPage(); let polls = 0;
+    await p.route('**/agent/segment', r => r.fulfill({ json: { selections: [sel(.25, .33, 'product')], selection: sel(.25, .33, 'product'), model: 'stub' } }));
+    await p.route('**/api/jobs', r => r.fulfill({ status: 202, json: { jobId: 'j1', status: '/api/jobs/j1', events: '/api/jobs/j1/events' } }));
+    const ev = (extra, status = 'running') => ({ jobId: 'j1', sequence: polls, status, ...extra });
+    const idStep = { kind: 'identified', text: 'Nintendo Switch OLED' }, q = { kind: 'search', text: 'Switch OLED lowest price', agent: 0 };
+    await p.route('**/api/jobs/j1', r => { polls++; const t0 = now();
+      const done = { status: 'complete', pricingMode: 'exact_model', candidates: [{ name: 'Nintendo Switch OLED', brand: 'Nintendo', model: 'Switch OLED', confidence: .9 }], identity: { brand: 'Nintendo', model: 'Switch OLED', brandEvidence: ['visual-search inferred: Nintendo'], modelEvidence: ['visual-search inferred: Switch OLED'], inferred: true },
+        offers: [{ id: 'offer-0', title: 'Nintendo Switch OLED White', url: 'https://shop0.example.org/p/0', merchant: 'shop0.example.org', condition: 'new', availability: 'in_stock', price: 446310, currency: 'KRW', checkedAt: t0, evidence: ['seen'], confidence: .8 }],
+        lowest: 'offer-0', highest: 'offer-0', representative: { min: 446310, median: 446310, max: 446310, currency: 'KRW', condition: 'new', basis: 'item_only', sampleCount: 1 }, tools: ['agent_web_search'], startedAt: t0, completedAt: t0 };
+      r.fulfill({ json: polls === 1 ? ev({ candidate: { name: 'Nintendo Switch OLED' }, activity: [idStep] })
+        : polls === 2 ? ev({ activity: [idStep, q, { kind: 'open', text: 'enuri.com', agent: 1 }] })
+        : polls === 3 ? ev({ activity: [idStep, q, { kind: 'open', text: 'enuri.com', agent: 1 }, { kind: 'agentDone', n: 6, agent: 0 }, { kind: 'agentDone', n: 5, agent: 1 }, { kind: 'compare', n: 11 }] })
+        : polls < 6 ? ev({ activity: [idStep, { kind: 'compare', n: 11 }] }) : ev({ result: done }, 'completed') }); });
+    await p.goto(server.resolvedUrls.local[0]); await p.waitForFunction(() => document.querySelector('video')?.readyState >= 2); await p.getByRole('button', { name: 'Touch · Draw' }).click(); await p.mouse.click(110, 270);
+    await p.waitForFunction(() => /Identified: Nintendo Switch OLED/.test(document.querySelector('.card .card-sub')?.innerText || ''), null, { timeout: 15000 }).catch(async e => { console.log('debug polls=' + polls, JSON.stringify(await p.evaluate(() => [...document.querySelectorAll('.card')].map(c => c.dataset.phase + ' | ' + c.innerText.replace(/\\n/g, ' / '))))); throw e; });   // the name arrives first
+    await p.waitForFunction(() => /Reading enuri\.com/.test(document.querySelector('.card .card-sub')?.innerText || ''), null, { timeout: 15000 });               // then what the agents do
+    await p.locator('.card').first().click();
+    const work = p.locator('.work'); await work.waitFor();
+    assert.match(await work.innerText(), /Working on it/);
+    await p.waitForFunction(() => /Searching .Switch OLED lowest price./.test(document.querySelector('.work .feed')?.innerText || '') || /Comparing 11 listings/.test(document.querySelector('.work .feed')?.innerText || ''), null, { timeout: 15000 });
+    if (shots) await p.screenshot({ path: shots + '/ui-7-working.png' });
+    await p.waitForFunction(() => document.querySelectorAll('.work .stage.on').length >= 3, null, { timeout: 15000 });    // identify, search, compare lit by real events
+    await p.waitForFunction(() => /₩446,310/.test(document.querySelector('.sheet')?.innerText || ''), null, { timeout: 20000 });  // the same sheet turns into the answer
+    assert.equal(await p.locator('.work').count(), 0); await c.close();
+  }
   assert.deepEqual(errors, []);
-  console.log('PASS: star gate before camera, English default, Korean switch, compact card, filter bar, details behind a toggle, swipe/tap close, hidden scrollbars, no attribution on camera, person card without play-price wording, outline persists when the object is lost or the phone turns and returns, no star prompt on phones or the app shell, real star actions only after a tap (signed-in gh, on-screen sign-in, Settings on a phone), pairing QR switchable between the app link and the browser link, outline held without motion sensors.');
+  console.log('PASS: star gate before camera, English default, Korean switch, compact card, filter bar, details behind a toggle, swipe/tap close, hidden scrollbars, no attribution on camera, person card without play-price wording, outline persists when the object is lost or the phone turns and returns, no star prompt on phones or the app shell, real star actions only after a tap (signed-in gh, on-screen sign-in, Settings on a phone), pairing QR switchable between the app link and the browser link, outline held without motion sensors, live work state (name first, then the real agent actions).');
 } finally { await browser?.close(); await server.close(); }

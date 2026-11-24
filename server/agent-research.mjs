@@ -64,17 +64,47 @@ export function parseAgentOutput(text) {
   return null;
 }
 
-/** One agent: model + hosted web_search, images attached. */
-export async function runAgent(focus, images, { signal, env = process.env, fetchImpl = fetch, timeoutMs, modelHint, language } = {}) {
+const hostName = u => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return ''; } };
+
+/** Minimal Server-Sent-Events reader: calls onEvent with every parsed `data:` JSON payload. */
+async function readSse(res, onEvent) {
+  const reader = res.body.getReader(), dec = new TextDecoder(); let buf = '';
+  for (;;) {
+    const { done, value } = await reader.read(); if (done) break;
+    buf += dec.decode(value, { stream: true });
+    for (let i = buf.indexOf('\n\n'); i >= 0; i = buf.indexOf('\n\n')) {
+      const data = buf.slice(0, i).split('\n').filter(l => l.startsWith('data:')).map(l => l.slice(5).trim()).join('\n'); buf = buf.slice(i + 2);
+      if (data && data !== '[DONE]') { try { onEvent(JSON.parse(data)); } catch { /* ignore a malformed event */ } }
+    }
+  }
+}
+
+/** One agent: model + hosted web_search, images attached. With `onStep` the response is streamed and the agent's real
+ *  actions (search queries, pages opened, sources cited) are reported while it works. */
+export async function runAgent(focus, images, { signal, env = process.env, fetchImpl = fetch, timeoutMs, modelHint, language, onStep } = {}) {
   const key = env.VLM_API_KEY || env.OPENAI_API_KEY, base = env.VLM_BASE_URL || env.OPENAI_BASE_URL, model = env.VLM_MODEL || env.OPENAI_VLM_MODEL;
   if (!key || !base || !model) throw Error('vlm_configuration_missing');
   const limit = AbortSignal.timeout(timeoutMs ?? Number(env.HOWMUCH_AGENT_TIMEOUT_MS || 140000)), combined = signal ? AbortSignal.any([signal, limit]) : limit;
   const content = [{ type: 'input_text', text: buildAgentPrompt(focus, modelHint, language, Number(env.HOWMUCH_AGENT_BUDGET || 3)) }, ...images.map(u => ({ type: 'input_image', image_url: u }))];
+  const stream = typeof onStep === 'function' && env.HOWMUCH_AGENT_STREAM !== '0';
   const res = await fetchImpl(base.replace(/\/$/, '') + '/responses', { method: 'POST', signal: combined, headers: { authorization: 'Bearer ' + key, 'content-type': 'application/json' },
-    body: JSON.stringify({ model, input: [{ role: 'user', content }], tools: [{ type: 'web_search', search_context_size: env.HOWMUCH_AGENT_CONTEXT || 'low' }], tool_choice: 'auto',
+    body: JSON.stringify({ model, input: [{ role: 'user', content }], tools: [{ type: 'web_search', search_context_size: env.HOWMUCH_AGENT_CONTEXT || 'low' }], tool_choice: 'auto', ...(stream ? { stream: true } : {}),
       ...(env.HOWMUCH_AGENT_EFFORT ? { reasoning: { effort: env.HOWMUCH_AGENT_EFFORT } } : {}), ...(env.HOWMUCH_AGENT_MAX_TOOLS ? { max_tool_calls: Number(env.HOWMUCH_AGENT_MAX_TOOLS) } : {}) }) });
   if (!res.ok) throw Error('agent_http_' + res.status);
-  const data = await res.json(), items = data.output || [];
+  let data; const said = new Set();
+  const step = (kind, text) => { const k = kind + '|' + text; if (!text || said.has(k)) return; said.add(k); try { onStep({ kind, text }); } catch { /* a listener must never break research */ } };
+  if (stream && (res.headers.get?.('content-type') || '').includes('text/event-stream')) {
+    await readSse(res, ev => {
+      if (ev.type === 'response.output_item.added' || ev.type === 'response.output_item.done') {
+        const act = ev.item?.type === 'web_search_call' ? ev.item.action : null;
+        if (act?.type === 'search') step('search', String(act.query || act.queries?.[0] || '').slice(0, 80));
+        else if (act?.type === 'open_page') step('open', hostName(act.url));
+      } else if (ev.type === 'response.output_text.annotation.added' && ev.annotation?.url) step('cite', hostName(ev.annotation.url));
+      else if (ev.type === 'response.completed') data = ev.response;
+    });
+    if (!data) throw Error('agent_stream_incomplete');
+  } else data = await res.json();
+  const items = data.output || [];
   const parts = items.filter(o => o.type === 'message').flatMap(o => o.content || []).filter(c => c.type === 'output_text');
   return parseAgentOutput(parts.map(c => c.text).join('\n'));
 }
@@ -154,14 +184,17 @@ export async function agentResearch(body, deps = {}) {
 
   deps.onPhase?.({ phase: 'researching' });
   // Name first: this finishes in seconds and shows on the card while the (much slower) price research runs.
-  void (deps.quickName || quickName)(images, { signal, env: deps.env, fetchImpl: deps.fetchImpl, language }).then(q => { if (q?.name && !settled) deps.onPhase?.({ phase: 'researching', candidate: { name: q.name, confidence: .6 } }); }, () => {});
+  void (deps.quickName || quickName)(images, { signal, env: deps.env, fetchImpl: deps.fetchImpl, language }).then(q => { if (q?.name && !settled) { deps.onPhase?.({ phase: 'researching', candidate: { name: q.name, confidence: .6 } }); say({ kind: 'identified', text: q.name }); } }, () => {});
   const results = [];
   const ac = new AbortController(), sig = signal ? AbortSignal.any([signal, ac.signal]) : ac.signal;
   let settled = null, resolveEarly; const earlyP = new Promise(res => { resolveEarly = res; });
   // As soon as two agents already give a complete answer the rest are cancelled (speed); otherwise after the first
   // answer the others get a short grace period and stragglers are dropped.
-  const jobs = FOCI.slice(0, agents).map(focus => call(focus, images, { signal: sig, env: deps.env, fetchImpl: deps.fetchImpl, modelHint, language }).then(async r => {
-    if (!r) return; results.push(r);
+  const say = (step, agent) => { try { deps.onPhase?.({ phase: 'progress', step: { ...step, ...(agent != null ? { agent } : {}) } }); } catch { /* progress is best effort */ } };
+  let compared = false;
+  const jobs = FOCI.slice(0, agents).map((focus, k) => call(focus, images, { signal: sig, env: deps.env, fetchImpl: deps.fetchImpl, modelHint, language, onStep: st => say(st, k) }).then(async r => {
+    if (!r) return; results.push(r); say({ kind: 'agentDone', n: r.offers.length }, k);
+    if (results.length >= 2 && !compared) { compared = true; say({ kind: 'compare', n: results.reduce((a, x) => a + x.offers.length, 0) }); }
     if (!settled && results.length >= 2) { const t = await assemble(); if (!settled && t.status === 'complete') { settled = t; ac.abort(); resolveEarly(t); } }
   }, () => {}));
   const graceP = new Promise(res => { let t; const arm = () => { if (!t && results.length) t = setTimeout(() => res(null), grace); }; jobs.forEach(j => j.then(arm)); });

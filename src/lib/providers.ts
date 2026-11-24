@@ -29,27 +29,28 @@ export class HttpSegmentationProvider {
 
 export class HttpResearchProvider implements ResearchAgentProvider {
   constructor(private readonly endpoint: string, private readonly jobsEndpoint?: string) {}
-  private async stream(input: ResearchContext, signal?: AbortSignal, onPhase?: (event: {phase: string; candidate?: {name: string}}) => void) {
+  private async stream(input: ResearchContext, signal?: AbortSignal, onPhase?: (event: {phase: string; candidate?: {name: string}; step?: unknown; activity?: unknown[]}) => void) {
     const response = await fetch(this.endpoint, { method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/x-ndjson, application/json' }, body: JSON.stringify(input), signal });
     if (!response.ok) throw new Error(await failure(response, '가격 조사'));
     return readResearch(response, onPhase);
   }
   // Background-safe transport for phones: submit a job, then poll it. The server keeps researching while the app is
   // suspended; when the app resumes, the same job id is read again. No long-lived connection has to survive.
-  private async pollJob(input: ResearchContext, signal?: AbortSignal, onPhase?: (event: {phase: string; candidate?: {name: string}}) => void) {
+  private async pollJob(input: ResearchContext, signal?: AbortSignal, onPhase?: (event: {phase: string; candidate?: {name: string}; step?: unknown; activity?: unknown[]}) => void) {
     const start = await fetch(this.jobsEndpoint as string, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(input), signal });
     if (!start.ok) throw new Error(await failure(start, '가격 조사'));
     const { jobId, status } = await start.json() as { jobId: string; status: string };
     try { sessionStorage.setItem('howmuch-job-' + jobId, String(Date.now())); } catch { /* storage may be unavailable */ }
     onPhase?.({ phase: 'researching' });
     const deadline = Date.now() + 300000;
-    let delay = 1200, lastName = '';
+    let delay = 1200, lastName = '', lastActivity = '';
     while (Date.now() < deadline) {
       await new Promise<void>((resolve, reject) => { const t = setTimeout(resolve, delay); signal?.addEventListener('abort', () => { clearTimeout(t); reject(new DOMException('aborted', 'AbortError')); }, { once: true }); });
       const r = await fetch(status, { signal });
       if (r.status === 404) throw new Error('가격 조사 작업을 찾을 수 없습니다.');
       if (!r.ok) { delay = Math.min(4000, delay * 1.5); continue; } // transient network loss while backgrounded: keep polling
-      const event = await r.json() as { status: string; result?: unknown; candidate?: { name: string } };
+      const event = await r.json() as { status: string; result?: unknown; candidate?: { name: string }; activity?: unknown[] };
+      if (event.status === 'running' && event.activity?.length) { const sig = JSON.stringify(event.activity); if (sig !== lastActivity) { lastActivity = sig; onPhase?.({ phase: 'progress', activity: event.activity }); } }
       if (event.status === 'running' && event.candidate && event.candidate.name !== lastName) { lastName = event.candidate.name; onPhase?.({ phase: 'researching', candidate: event.candidate }); }
       if (event.status === 'completed' && event.result) return event.result;
       if (event.status === 'failed') throw new Error('가격 조사에 실패했습니다.');
@@ -57,7 +58,7 @@ export class HttpResearchProvider implements ResearchAgentProvider {
     }
     throw new Error('가격 조사 시간이 초과됐습니다.');
   }
-  async research(input: ResearchContext, signal?: AbortSignal, onPhase?: (event: {phase: string; candidate?: {name: string}}) => void): Promise<ResearchResult> {
+  async research(input: ResearchContext, signal?: AbortSignal, onPhase?: (event: {phase: string; candidate?: {name: string}; step?: unknown; activity?: unknown[]}) => void): Promise<ResearchResult> {
     const envelope = (this.jobsEndpoint ? await this.pollJob(input, signal, onPhase) : await this.stream(input, signal, onPhase)) as { candidates?: ResearchResult['candidates']; offers?: ResearchResult['offers']; lowest?: ResearchResult['lowest']; highest?: ResearchResult['highest']; status?: ResearchResult['status']; queries?: string[]; representative?: ResearchResult['representative']; startedAt?: string; completedAt?: string; tools?: string[] };
     if (!Array.isArray(envelope.candidates) || !Array.isArray(envelope.offers) || typeof envelope.startedAt !== 'string' || Number.isNaN(Date.parse(envelope.startedAt)) || typeof envelope.completedAt !== 'string' || Number.isNaN(Date.parse(envelope.completedAt)) || !Array.isArray(envelope.tools) || envelope.tools.length === 0 || envelope.tools.some((tool) => typeof tool !== 'string' || !tool.trim())) throw new Error('Research agent returned an invalid contract');
     if (envelope.candidates.some((candidate) => !candidate?.name || typeof candidate.name !== 'string' || !Number.isFinite(candidate.confidence) || candidate.confidence < 0 || candidate.confidence > 1)) throw new Error('Research agent returned invalid candidates');

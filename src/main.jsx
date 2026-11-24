@@ -75,8 +75,10 @@ function App(){
  useLayoutEffect(()=>{const ro=new ResizeObserver(([entry])=>setSize({width:entry.contentRect.width,height:entry.contentRect.height}));ro.observe(stage.current);return()=>ro.disconnect()},[]);
  const research=async(o,source,labelDataUrl,modelHint)=>{
    const live=()=>jobs.current.get(o.id)===o&&alive.current;
-   const start=performance.now(); o.phase='identifying'; o.error=null; o.result=null; sync();
-   const onPhase=e=>{if(live()&&e.phase==='researching'){o.phase='loading';o.candidate=e.candidate;sync()}};
+   const start=performance.now(); o.phase='identifying'; o.error=null; o.result=null; o.activity=[]; sync();
+   const onPhase=e=>{if(!live())return;
+     if(e.phase==='researching'){o.phase='loading';o.candidate=e.candidate||o.candidate;sync()}
+     else if(e.phase==='progress'){o.activity=Array.isArray(e.activity)?e.activity.slice(-8):[...(o.activity||[]),e.step].filter(Boolean).slice(-8);if(o.phase==='identifying')o.phase='loading';sync()}};
    try{
     const request=o.original ?? {imageDataUrl:shrinkCanvas(source,768).toDataURL('image/jpeg',.8),cutoutDataUrl:await shrinkDataUrl(o.selection.cutoutDataUrl||cutout(source,o.selection),512),selection:{x:o.selection.x,y:o.selection.y,width:o.selection.width,height:o.selection.height,polygon:o.selection.polygon},locale:locale()};
     const r=await new HttpResearchProvider(providerConfig().researchEndpoint,providerConfig().jobsEndpoint).research({...request,...(labelDataUrl&&{labelDataUrl}),...(modelHint&&{modelHint})},o.controller.signal,onPhase);
@@ -144,7 +146,7 @@ function App(){
      // An automatic refresh may finish while a visible track briefly loses
      // lock. Reuse a lost track only with positive, unambiguous appearance.
      if(!isPick){const lost=[...jobs.current.values()].filter(o=>!o.position&&o.template&&!claimed.has(o.id))
-       .map(o=>({o,cost:appearanceCost(o.template,source,s)})).filter(x=>x.cost<16).sort((a,b)=>a.cost-b.cost);
+       .map(o=>({o,cost:appearanceCost(o.template,source,s)})).filter(x=>x.cost<22).sort((a,b)=>a.cost-b.cost);   // looser after a turn: lighting and angle change the look
        if(lost.length){if(!lost[1]||lost[1].cost-lost[0].cost>5){claimed.add(lost[0].o.id);bindTrack(lost[0].o,s,source);sync()}continue;}}
      if(!reserved && jobs.current.size>=MAX_JOBS)continue;
      const o=reserved||{id:++sequence.current,controller:new AbortController()};Object.assign(o,{selection:s,position:s,phase:person(s)?'person':'loading',coins:person(s)&&funRef.current?mint():null});

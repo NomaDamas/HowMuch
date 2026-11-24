@@ -10,6 +10,9 @@ import { jobStore } from './jobs.mjs';
 import { githubStar } from './github-star.mjs';
 import { ghLocal, localHost } from './gh-local.mjs';
 
+// Progress steps are display text only: whitelist the kinds, strip control characters and cap the length.
+const STEP_KINDS=new Set(['identified','search','open','cite','agentDone','compare']);
+export const safeStep=s=>s&&STEP_KINDS.has(s.kind)?{kind:s.kind,...(typeof s.text==='string'&&s.text.trim()?{text:s.text.replace(/[\u0000-\u001f\u007f]/g,' ').trim().slice(0,80)}:{}),...(Number.isInteger(s.n)?{n:Math.max(0,Math.min(999,s.n))}:{}),...(Number.isInteger(s.agent)&&s.agent>=0&&s.agent<9?{agent:s.agent}:{})}:null;
 const timeout = () => Math.max(1000,Math.min(600000, Number(process.env.RESEARCH_TIMEOUT_MS)||180000));
 const json = (res,status,body,extra={}) => {
   res.writeHead(status, {'content-type':'application/json','cache-control':'no-store','x-content-type-options':'nosniff',...extra});
@@ -44,6 +47,7 @@ export async function researchAgent(input, signal, onPhase) {
     const event=JSON.parse(line);
     if(event.error)throw Error('research_failed');
     if(event.result){result=validated(event.result);return}
+    if(event.phase==='progress'){const st=safeStep(event.step);if(st)onPhase?.({phase:'progress',step:st});return}
     // The first 'researching' event starts the phase; later ones may carry the early object name and must pass through too.
     if(event.phase==='researching'&&!result&&(!researching||event.candidate)){
       researching=true;
@@ -136,7 +140,11 @@ export function gateway({phoneOrigin, research=researchAgent, agentOrigin='http:
       }
       if(!isValidResearchInput(input))return json(res,400,{error:'image_and_selection_required'});
       if(route==='/api/jobs') {
-        const id=jobs.start(owner,progress=>run(input,undefined,e=>{if(e?.candidate)progress({candidate:e.candidate})})); if(!id)return json(res,429,{error:'job_capacity'});
+        const activity=[];
+        const id=jobs.start(owner,progress=>run(input,undefined,e=>{
+          if(e?.candidate)progress({candidate:e.candidate,activity:activity.slice(-8)});
+          if(e?.step){activity.push(e.step);progress({activity:activity.slice(-8)})}
+        })); if(!id)return json(res,429,{error:'job_capacity'});
         return json(res,202,{jobId:id,events:'/api/jobs/'+id+'/events',status:'/api/jobs/'+id});
       }
       const streamed = req.headers.accept?.includes('application/x-ndjson');

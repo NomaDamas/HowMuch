@@ -13,6 +13,12 @@ export function nameOf(o) {
   const model = id?.model ? [id.brand, id.model].filter(Boolean).join(' ') : '';
   return model || r?.candidates?.[0]?.name || o.candidate?.name || t('card.object');
 }
+/** What the research agents are really doing, as short text ("Searching “Switch OLED price”", "Reading enuri.com"). */
+export const stepText = st => st ? t('act.' + st.kind, { text: st.text || '', n: st.n ?? '' }) : '';
+export function stages(o) {
+  const a = o.activity || [], done = a.filter(s => s.kind === 'agentDone').length;
+  return { flags: [a.some(s => s.kind === 'identified') || Boolean(o.candidate), a.some(s => s.kind === 'search' || s.kind === 'open'), done >= 1, a.some(s => s.kind === 'compare') || done >= 2], done };
+}
 const busy = o => ['segmenting', 'identifying', 'loading'].includes(o.phase);
 export const stateText = o => o.error ? t('st.failed') : o.phase === 'segmenting' ? t('st.segmenting') : o.phase === 'identifying' ? t('st.identifying') : o.phase === 'loading' ? t('st.searching')
   : o.phase === 'research_unavailable' ? t('st.unavailable') : o.phase === 'followup_required' ? t('st.needModel') : o.visibility === 'reacquiring' ? t('st.reacquiring') : o.visibility === 'lost' ? t('st.lost') : '';
@@ -63,17 +69,29 @@ export function Hud({ o, box, tilt, measure, open, fun }) {
   useLang();
   const node = useRef(null), ref = useRef(measure); ref.current = measure;
   useLayoutEffect(() => { const read = () => { const r = node.current.getBoundingClientRect(); ref.current(o.id, { width: r.width, height: r.height }); }; read(); const ro = new ResizeObserver(read); ro.observe(node.current); return () => ro.disconnect(); }, [o.id]);
-  const r = o.result, price = priceOf(o, fun), sub = o.phase === 'person' ? '' : r?.pricingMode === 'type_estimate' ? t('price.estimate').split(' · ')[0] : stateText(o);
+  const r = o.result, price = priceOf(o, fun), last = busy(o) ? (o.activity || []).at(-1) : null, sub = o.phase === 'person' ? '' : r?.pricingMode === 'type_estimate' ? t('price.estimate').split(' · ')[0] : (last ? stepText(last) : stateText(o));
   return <button className="card" ref={node} style={{ left: box.x, top: box.y, '--ry': (tilt?.ry || 0) + 'deg', '--rx': (tilt?.rx || 0) + 'deg', '--k': tilt?.k || 1 }} onClick={open} data-object-id={o.id} data-phase={o.phase}>
     <span className="card-name">{nameOf(o)}</span>
     {busy(o) ? <span className="skeleton" /> : <span className="card-price">{price}</span>}
-    {(sub || busy(o)) && <span className="card-sub">{busy(o) ? stateText(o) : sub}</span>}
+    {(sub || busy(o)) && <span className={'card-sub' + (busy(o) ? ' live' : '')}>{busy(o) ? (sub || stateText(o)) : sub}</span>}
   </button>;
 }
 
 const cond = c => c === 'new' ? t('detail.new') : c === 'used' ? t('detail.used') : t('detail.unknownCond');
 const stock = a => a === 'in_stock' ? t('detail.inStock') : a === 'out_of_stock' ? t('detail.soldOut') : t('detail.stockUnknown');
 const when = iso => iso ? new Date(iso).toLocaleString(numberFormat()) : '';
+
+/** Shown while research runs: stage bar plus the agents' real actions as they happen. */
+function WorkPanel({ o }) {
+  useLang();
+  const { flags, done } = stages(o), feed = (o.activity || []).slice(-6);
+  const names = ['work.identify', 'work.search', 'work.compare', 'work.verify'];
+  return <div className="work" role="status" aria-live="polite">
+    <div className="work-head"><strong>{t('work.title')}</strong><small>{done > 0 ? t('work.agents', { n: done }) : t('work.wait')}</small></div>
+    <div className="stages">{names.map((n, i) => <div key={n} className={'stage ' + (flags[i] ? 'on' : flags.findIndex(f => !f) === i ? 'now' : '')}><i /><span>{t(n)}</span></div>)}</div>
+    <ul className="feed">{feed.map((st, i) => <li key={i + stepText(st)} className={'step ' + st.kind}>{stepText(st)}</li>)}</ul>
+  </div>;
+}
 
 /** Tap an object: model and price first; everything else is behind "Details". */
 export function Detail({ o, close, click, fun, beginLabel, refine, pause, resume }) {
@@ -87,7 +105,7 @@ export function Detail({ o, close, click, fun, beginLabel, refine, pause, resume
   return <Sheet label={name} onClose={close}>
     <h2>{name}</h2>
     {person ? <><div className="big-price">{priceOf(o, fun)}</div><p className="basis">{fun && o.coins ? t(o.coins.vibe) : t('detail.person')}</p></>
-      : isBusy ? <p>{o.phase === 'loading' ? t('detail.searching') : t('detail.identifying')}</p>
+      : isBusy ? <WorkPanel o={o} />
       : o.error ? <p>{o.error}</p>
       : o.phase === 'research_unavailable' ? <p>{t('detail.unavailable')}</p>
       : <><div className="big-price">{display.price}</div><p className="basis">{display.type}</p></>}

@@ -127,3 +127,35 @@ test('quickName reads the picture without web search and understands a person', 
   assert.equal(await quickName([img], { env, fetchImpl: async () => ({ ok: false }) }), null);
   assert.equal(await quickName([img], { env: {} }), null);
 });
+
+const sse = events => { const text = events.map(e => 'event: ' + e.type + '\ndata: ' + JSON.stringify(e) + '\n\n').join(''); const bytes = new TextEncoder().encode(text);
+  // split mid-event on purpose: a real network chunk boundary can fall anywhere
+  const half = Math.floor(bytes.length / 2); return { ok: true, headers: { get: () => 'text/event-stream' }, body: new ReadableStream({ start(c) { c.enqueue(bytes.slice(0, half)); c.enqueue(bytes.slice(half)); c.close(); } }) }; };
+test('streaming: the agent\'s real searches, pages and sources are reported while it works, then the final answer is parsed', async () => {
+  const final = { output: [{ type: 'message', content: [{ type: 'output_text', text: '{"kind":"product","level":"exact","identity":{"brand":"Nintendo","model":"Switch OLED"},"offers":[]}' }] }] };
+  const fetchImpl = async (u, init) => { assert.equal(JSON.parse(init.body).stream, true);
+    return sse([{ type: 'response.output_item.added', item: { type: 'web_search_call', action: { type: 'search', query: 'Switch OLED 최저가' } } },
+      { type: 'response.output_item.done', item: { type: 'web_search_call', action: { type: 'search', query: 'Switch OLED 최저가' } } },
+      { type: 'response.output_item.added', item: { type: 'web_search_call', action: { type: 'open_page', url: 'https://www.enuri.com/x/1' } } },
+      { type: 'response.output_text.annotation.added', annotation: { url: 'https://prod.danawa.com/info/?pcode=1' } },
+      { type: 'response.completed', response: final }]); };
+  const steps = []; const r = await runAgent('f', [img, img], { env: { VLM_API_KEY: 'k', VLM_BASE_URL: 'https://p.example/v1', VLM_MODEL: 'm' }, fetchImpl, onStep: s => steps.push(s) });
+  assert.deepEqual(steps, [{ kind: 'search', text: 'Switch OLED 최저가' }, { kind: 'open', text: 'enuri.com' }, { kind: 'cite', text: 'prod.danawa.com' }], 'deduplicated, hostnames only');
+  assert.equal(r.identity.brand, 'Nintendo');
+});
+test('without a step listener (or with streaming off) the plain JSON response is used', async () => {
+  let sent; const fetchImpl = async (u, init) => { sent = JSON.parse(init.body); return { ok: true, json: async () => ({ output: [] }) }; };
+  await runAgent('f', [img], { env: { VLM_API_KEY: 'k', VLM_BASE_URL: 'https://p.example/v1', VLM_MODEL: 'm' }, fetchImpl }); assert.equal(sent.stream, undefined);
+  await runAgent('f', [img], { env: { VLM_API_KEY: 'k', VLM_BASE_URL: 'https://p.example/v1', VLM_MODEL: 'm', HOWMUCH_AGENT_STREAM: '0' }, fetchImpl, onStep() {} }); assert.equal(sent.stream, undefined);
+  await assert.rejects(runAgent('f', [img], { env: { VLM_API_KEY: 'k', VLM_BASE_URL: 'https://p.example/v1', VLM_MODEL: 'm' }, fetchImpl: async () => sse([{ type: 'response.created' }]), onStep() {} }), /agent_stream_incomplete/);
+});
+test('research reports progress: object identified, each agent finishing, the comparison', async () => {
+  const phases = [];
+  const runs = [agent({ offers: [offer('https://a.co.kr/p/1', 446310)] }), agent({ offers: [offer('https://b.co.kr/p/2', 450000)] })]; let n = 0;
+  await agentResearch(body, { agents: 2, graceMs: 20, onPhase: e => phases.push(e), quickName: async () => ({ kind: 'product', name: 'Nintendo Switch OLED' }),
+    runAgent: (f, i, o) => { o.onStep({ kind: 'search', text: 'q' + n }); return runs[n++](); } });
+  const steps = phases.filter(e => e.phase === 'progress').map(e => e.step);
+  assert.ok(steps.some(s => s.kind === 'identified' && s.text === 'Nintendo Switch OLED'));
+  assert.equal(steps.filter(s => s.kind === 'search').length, 2); assert.equal(steps.filter(s => s.kind === 'agentDone').length >= 2, true);
+  assert.ok(steps.some(s => s.kind === 'compare' && s.n === 2)); assert.ok(steps.filter(s => s.kind === 'search').every(s => Number.isInteger(s.agent)));
+});
