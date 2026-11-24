@@ -97,7 +97,7 @@ export function gateway({phoneOrigin, research=researchAgent, agentOrigin='http:
       if (route==='/v1/pairing/exchange' && req.method==='POST' && isPhone) {
         const body=await readBody(req,2048), c=pairing.exchange(body?.sessionId,body?.token);
         if(!c) return json(res,401,{error:'invalid_or_expired'});
-        return json(res,200,{expiresAt:c.expiresAt},{'set-cookie':'__Host-howmuch='+c.id+'.'+c.clientToken+'; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=600'});
+        return json(res,200,{expiresAt:c.expiresAt},{'set-cookie':'__Host-howmuch='+c.id+'.'+c.clientToken+'; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=604800'});
       }
       const [sid,token]=(req.headers.cookie?.match(/(?:^|;\s*)__Host-howmuch=([^;]+)/)?.[1]||'').split('.');
       const owner=isPhone?sid:'desktop';
