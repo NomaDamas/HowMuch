@@ -43,7 +43,7 @@ def read_image(data):
         return np.array(image)
 
 
-def encode(mask, rgb):
+def encode(mask, rgb, cutout=True):
     h, w = mask.shape
     contours, hierarchy = cv2.findContours(mask.astype("uint8"), cv2.RETR_CCOMP,
                                            cv2.CHAIN_APPROX_SIMPLE)
@@ -62,6 +62,8 @@ def encode(mask, rgb):
     if not rings:
         return None
     x, y, bw, bh = cv2.boundingRect(mask.astype("uint8"))
+    if not cutout:   # live tracking only needs the outline: skip the PNG
+        return {"x": x/w, "y": y/h, "width": bw/w, "height": bh/h, "polygon": rings[0], "contours": rings}
     crop_mask = mask[y:y+bh, x:x+bw]
     rgba = np.dstack((rgb[y:y+bh, x:x+bw], crop_mask.astype("uint8") * 255))
     rgba[~crop_mask] = 0  # Do not send RGB data for non-selected pixels.
@@ -170,6 +172,61 @@ def segment(predictor, request, detector=None):
     return [selection for _, _, mask in chosen if (selection := encode(mask, rgb))]
 
 
+TRACKERS = {}      # sid -> [TrackSession, last_used]
+MAX_TRACKERS, TRACK_TTL = 6, 60
+_tracker_model = None
+
+
+def tracker_model():
+    """A second, smaller-input SAM 2 just for following objects: 512 px input is ~5x faster than 1024 with similar masks."""
+    global _tracker_model
+    if _tracker_model is None:
+        import time as _t
+        dev = os.environ.get("HOWMUCH_TRACK_DEVICE") or ("mps" if torch.backends.mps.is_available() else "cpu")
+        size = int(os.environ.get("HOWMUCH_TRACK_SIZE", "512"))
+        _tracker_model = build_sam2_video_predictor("configs/sam2.1/sam2.1_hiera_t.yaml", str(ROOT / ".howmuch/sam/sam2.1_hiera_tiny.pt"),
+                                                    device=dev, apply_postprocessing=False,
+                                                    hydra_overrides_extra=[f"++model.image_size={size}"])
+        print("Tracker ready:", dev, size, file=sys.stderr, flush=True)
+    return _tracker_model
+
+
+def track_op(t):
+    import time
+    from sam_track import TrackSession, ring_mask
+    now = time.time()
+    for sid in [k for k, v in TRACKERS.items() if now - v[1] > TRACK_TTL]:
+        del TRACKERS[sid]
+    sid, op = str(t.get("sid", "")), t.get("op")
+    if op == "end":
+        TRACKERS.pop(sid, None)
+        return {"track": {"ok": True}}
+    rgb = read_image(t["image"])
+    if op == "start":
+        h, w = rgb.shape[:2]
+        rings = t.get("contours") or []
+        seed = ring_mask(rings, h, w)
+        count = int(seed.sum())
+        if count < 16 or count >= .9 * h * w:
+            return {"track": {"ok": False}}
+        while len(TRACKERS) >= MAX_TRACKERS:
+            del TRACKERS[min(TRACKERS, key=lambda k: TRACKERS[k][1])]
+        TRACKERS[sid] = [TrackSession(tracker_model(), rgb, seed), now]
+        return {"track": {"ok": True}}
+    if op == "step":
+        entry = TRACKERS.get(sid)
+        if not entry:
+            return {"track": {"ok": True, "tracked": False, "reason": "no_session"}}
+        mask, present = entry[0].step(rgb)
+        entry[1] = now
+        sel = encode(mask, rgb, cutout=False) if mask is not None else None
+        if sel is None:
+            TRACKERS.pop(sid, None)
+            return {"track": {"ok": True, "tracked": False, "reason": "lost"}}
+        return {"track": {"ok": True, "tracked": True, "score": round(present, 2), "selection": sel}}
+    return {"track": {"ok": False}}
+
+
 def propagate(model, request):
     """Two-frame SAM memory; no filenames, video handles or reused session state."""
     p = request["propagation"]
@@ -213,6 +270,20 @@ def propagate(model, request):
 
 
 def main():
+    if os.environ.get("HOWMUCH_WORKER_ROLE") == "track":
+        # Tracking-only process: just the tracker model (loaded now so the first selection is not slow).
+        with contextlib.redirect_stdout(sys.stderr):
+            tracker_model()
+        for line in sys.stdin:
+            try:
+                body = json.loads(line)
+                with contextlib.redirect_stdout(sys.stderr), torch.inference_mode():
+                    result = track_op(body["track"])
+            except Exception as exc:
+                print("Track failed:", type(exc).__name__, str(exc)[:180], file=sys.stderr, flush=True)
+                result = {"track": {"ok": False}}
+            print(json.dumps(result, separators=(",", ":")), flush=True)
+        return
     with contextlib.redirect_stdout(sys.stderr):
         predictor = load_model()
         detector = None
@@ -225,6 +296,12 @@ def main():
     for line in sys.stdin:
         try:
             body = json.loads(line)
+            if "track" in body:
+                with contextlib.redirect_stdout(sys.stderr), torch.inference_mode():
+                    result = track_op(body["track"])
+                print(json.dumps(result, separators=(",", ":")), flush=True)
+                body = result = None
+                continue
             with contextlib.redirect_stdout(sys.stderr), torch.inference_mode():
                 selections = propagate(predictor.model,body) if body.get("propagation") else segment(predictor, body, detector)
             result = {"selections": selections, "model": "SAM 2.1 Hiera Tiny",

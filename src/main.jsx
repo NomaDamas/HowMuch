@@ -1,4 +1,4 @@
-import React,{useEffect,useLayoutEffect,useRef,useState} from 'react';
+import React,{useEffect,useLayoutEffect,useMemo,useRef,useState} from 'react';
 import {createRoot} from 'react-dom/client';
 import {ScanLine,Settings,Hand,Crosshair,Camera,List,Compass} from 'lucide-react';
 import Pairing from './Pairing.jsx';
@@ -6,7 +6,7 @@ import {previewTemplate,captureMaskedSignature} from './lib/xr-target.js';
 import WorldAnchorButton from './WorldAnchorButton.jsx';
 import {summarizeCard,spatialHandoff} from './lib/price-card.js';
 import {discoveryLabel} from './lib/market-display.js';
-import {HttpResearchProvider,HttpSegmentationProvider,providerConfig} from './lib/providers';
+import {HttpResearchProvider,HttpTrackProvider,HttpSegmentationProvider,providerConfig} from './lib/providers';
 import {normalizePolygon,screenToMediaSelection} from './lib/geometry.js';
 import {snapshot,cutout,toScreen,overlap,sampleFrame,distance,boxForHud,clamp} from './lib/camera-scene.js';
 import {recordAnonymousEvent} from './lib/telemetry.js';
@@ -63,14 +63,14 @@ function App(){
    const timer=setInterval(()=>{const next=canCapture(v.current);if(next!==last){last=next;sync()}},150);
    return()=>clearInterval(timer)},[ready]);
  function wipe(){clearTimeout(hold.current);clearTimeout(fade.current);gesture.current=null;const c=pen.current;if(c){c.getContext('2d').clearRect(0,0,c.width,c.height);c.classList.remove('fade')}}
- function cancelJob(id){const o=jobs.current.get(id);if(!o)return;if(o.position)ignored.current=[...ignored.current.slice(-7),o.position];o.stop?.();o.controller?.abort();jobs.current.delete(id);if(detail===id)setDetail(null);sync();setHint(t('hint.cancelled'));}
+ function cancelJob(id){const o=jobs.current.get(id);if(!o)return;if(o.position)ignored.current=[...ignored.current.slice(-7),o.position];stopTrack(o);o.controller?.abort();jobs.current.delete(id);if(detail===id)setDetail(null);sync();setHint(t('hint.cancelled'));}
  const startCamera=async()=>{const id=++cameraJob.current;setCameraError('');try{
   if(!navigator.mediaDevices?.getUserMedia)throw Error(t('cam.https'));
   const s=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}},audio:false});
   if(id!==cameraJob.current||!alive.current){s.getTracks().forEach(t=>t.stop());return}
   stream.current?.getTracks().forEach(t=>t.stop());stream.current=s;v.current.srcObject=s;await v.current.play();if(alive.current)setReady(true);
  }catch(e){if(alive.current&&id===cameraJob.current)setCameraError(e.name==='NotAllowedError'?t('cam.denied'):e.message||t('cam.error'))}};
- useEffect(()=>{alive.current=true;note({mode,outcome:'session'});return()=>{alive.current=false;++epoch.current;++cameraJob.current;wipe();stream.current?.getTracks().forEach(t=>t.stop());segmentController.current?.abort();for(const o of jobs.current.values()){o.stop?.();o.controller?.abort()}}},[]);
+ useEffect(()=>{alive.current=true;note({mode,outcome:'session'});return()=>{alive.current=false;++epoch.current;++cameraJob.current;wipe();stream.current?.getTracks().forEach(t=>t.stop());segmentController.current?.abort();for(const o of jobs.current.values()){stopTrack(o);o.controller?.abort()}}},[]);
  useEffect(()=>{if(!gate&&alive.current&&!stream.current)void startCamera()},[gate]);
  useLayoutEffect(()=>{const ro=new ResizeObserver(([entry])=>setSize({width:entry.contentRect.width,height:entry.contentRect.height}));ro.observe(stage.current);return()=>ro.disconnect()},[]);
  const research=async(o,source,labelDataUrl,modelHint)=>{
@@ -98,18 +98,27 @@ function App(){
  }
  function pauseForSpatial(){spatial.current=true;++cameraJob.current;segmentController.current?.abort();setReady(false);stream.current?.getTracks().forEach(t=>t.stop());stream.current=null;if(v.current)v.current.srcObject=null}
  function resumeFromSpatial(){spatial.current=false;if(alive.current)void startCamera()}
+ const trackApi=useMemo(()=>new HttpTrackProvider(providerConfig().trackEndpoint),[]);
+ function stopTrack(o){o.stop?.();if(o.trackSid){const sid=o.trackSid;o.trackSid=null;o.trackReady=false;void trackApi.end(sid)}}
+ function startServerTrack(o,s,source){
+  if(o.trackSid){const old=o.trackSid;void trackApi.end(old)}
+  const sid=o.trackSid=(crypto.randomUUID?.()||String(Date.now())+Math.random().toString(16).slice(2)),k=Math.min(1,480/Math.max(source.width,source.height));
+  const c=document.createElement('canvas');c.width=Math.round(source.width*k);c.height=Math.round(source.height*k);c.getContext('2d').drawImage(source,0,0,c.width,c.height);
+  o.trackReady=false;o.trackLive=0;
+  void trackApi.start(sid,c.toDataURL('image/jpeg',.7),s.contours?.length?s.contours:[s.polygon]).then(r=>{if(jobs.current.get(o.id)===o&&o.trackSid===sid)o.trackReady=!!r?.ok&&!r.busy}).catch(()=>{});
+ }
+ function localTrack(o,s,frame){return trackPreview(v.current,s,next=>{if(jobs.current.get(o.id)!==o)return;
+   if(!next){if(o.trackReady&&performance.now()-o.trackLive<900)return;o.lostAt ||= performance.now();o.refineNeeded=true;o.position=null;o.visibility='lost';sync();return;}
+   o.lostAt=0;o.visibility='tracking';if(!o.trackReady&&overlap(o.reference.selection,next)<.74)o.refineNeeded=true;
+   o.position=next;sync();},frame)}
  function bindTrack(o,s,source){o.reference={frame:source,selection:s};o.lostAt=0;if(!o.template)o.template=previewTemplate(source,s);
   if(!o.signaturePending&&!o.signature&&!person(s)){
    o.signaturePending=true;
    void captureMaskedSignature(s.cutoutDataUrl||cutout(source,s),s,s.width*source.width/(s.height*source.height))
     .then(t=>{if(t&&jobs.current.get(o.id)===o){o.signature=t;sync()}}).catch(()=>{}).finally(()=>{o.signaturePending=false});
   }o.stop?.();o.selection=s;o.position=s;o.refineNeeded=false;
-  o.stop=trackPreview(v.current,s,next=>{if(jobs.current.get(o.id)!==o)return;
-   if(!next){o.lostAt ||= performance.now();o.refineNeeded=true;o.position=null;o.visibility='lost';sync();return;
-   }
-   o.lostAt=0;o.visibility='tracking';if(overlap(o.reference.selection,next)<.74)o.refineNeeded=true;
-   o.position=next;sync();
-  },source);}
+  o.stop=localTrack(o,s,source);startServerTrack(o,s,source);
+ }
  async function discover(input={},refresh=null){
    if(spatial.current||captureRef.current!=null||sheetRef.current!=null||!canCapture(v.current)||!ready)return;
    const current=epoch.current,manual=!!(input.point||input.selection),isPick=manual&&!refresh;
@@ -173,6 +182,38 @@ function App(){
      void discover({propagation:{previousImageDataUrl,selection:{x:s.x,y:s.y,width:s.width,height:s.height,polygon:s.polygon,contours:s.contours}}},o);
     },1200);return()=>clearInterval(timer);
  },[mode,ready]);
+ // Live following: while an object is selected, its picture goes to the server's video object segmentation (SAM 2 with
+ // memory) a few times per second and the answer replaces the local template tracker's guess. Frames are skipped when
+ // the server is busy; when the server loses the object the local tracker and the SAM refresh take over as before.
+ useEffect(()=>{if(!ready)return;
+  const c=document.createElement('canvas');let alive2=true;
+  const apply=(o,sel)=>{
+   if(jobs.current.get(o.id)!==o)return;
+   const next={...(o.position||o.selection),x:sel.x,y:sel.y,width:sel.width,height:sel.height,polygon:sel.polygon,contours:sel.contours};
+   if(next.width*next.height<MIN_AREA)return;
+   o.trackLive=performance.now();o.lostAt=0;o.visibility='tracking';o.refineNeeded=false;o.position=next;
+   o.stop?.();o.stop=localTrack(o,next);sync();
+  };
+  const tick=()=>{
+   if(!alive2||document.hidden||!canCapture(v.current)||spatial.current)return;
+   const vid=v.current,k=Math.min(1,480/Math.max(vid.videoWidth,vid.videoHeight));
+   const w=Math.round(vid.videoWidth*k),h=Math.round(vid.videoHeight*k);
+   for(const o of jobs.current.values()){
+    if(!o.trackSid||!o.trackReady||o.trackBusy)continue;
+    if(c.width!==w||c.height!==h){c.width=w;c.height=h}
+    c.getContext('2d').drawImage(vid,0,0,w,h);
+    const sid=o.trackSid;o.trackBusy=true;
+    void trackApi.step(sid,c.toDataURL('image/jpeg',.7)).then(r=>{
+     if(jobs.current.get(o.id)!==o||o.trackSid!==sid)return;
+     if(r.busy)return;
+     if(r.tracked&&r.selection)apply(o,r.selection);
+     else{o.trackReady=false;o.trackLive=0;o.refineNeeded=true}   // lost on the server: local tracker + SAM refresh take over
+    }).catch(()=>{o.trackReady=false}).finally(()=>{o.trackBusy=false});
+    break;   // one frame per tick; objects take turns, so the server never gets a burst
+   }
+  };
+  const timer=setInterval(tick,70);return()=>{alive2=false;clearInterval(timer)};
+ },[ready]);
  useEffect(()=>{if(!ready||mode!=='auto')return;
   const buffer=document.createElement('canvas');buffer.width=32;buffer.height=24;let base=null,last=null,busy=false,ended=false,nextAt=0;since.current=performance.now();
   const timer=setInterval(async()=>{if(ended||document.hidden||!canCapture(v.current))return;const now=performance.now(),sig=sampleFrame(v.current,buffer);

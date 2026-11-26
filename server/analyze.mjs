@@ -74,6 +74,11 @@ export async function researchAgent(input, signal, onPhase) {
 const imageValid = v=> typeof v==='string' && /^data:image\/(jpeg|jpg|png|webp);base64,/i.test(v) && v.length<=12000000;
 export function gateway({phoneOrigin, research=researchAgent, agentOrigin='http://127.0.0.1:8791'}={}) {
   const pairing=pairingStore(Date.now,{file:process.env.HOWMUCH_PAIRING_FILE||resolve('.howmuch','pairing.json')}), jobs=jobStore(), star=githubStar(), gh=ghLocal(), budget=new Map(); let active=0;
+  const tracks=new Map();
+  function trackRate(owner) {
+    const t=Date.now(); for(const [id,v] of tracks) if(v.at<=t-2000) tracks.delete(id);
+    const v=tracks.get(owner)||{at:t,n:0}; tracks.set(owner,v); if(t-v.at>1000){v.at=t;v.n=0} return ++v.n<=40;
+  }
   function rate(owner) {
     const t=Date.now(); for(const [id,v] of budget) if(v.until<=t) budget.delete(id);
     const v=budget.get(owner)||{until:t+60000,n:0}; budget.set(owner,v); return ++v.n<=30;
@@ -132,7 +137,15 @@ export function gateway({phoneOrigin, research=researchAgent, agentOrigin='http:
         if(!out) return json(res,404,{error:'not_found'});
         return json(res,out.status,out.body);
       }
-      if(req.method!=='POST' || !['/api/research','/api/jobs','/agent/segment'].includes(route))return json(res,404,{error:'not_found'});
+      if(req.method!=='POST' || !['/api/research','/api/jobs','/agent/segment','/agent/track'].includes(route))return json(res,404,{error:'not_found'});
+      if(route==='/agent/track'){
+        // Live tracking sends many small frames per second: its own limit (frames/second per owner), not the 30/min of research.
+        if(!trackRate(owner))return json(res,429,{error:'rate_limited'});
+        const input=await readBody(req);
+        const r=await fetch(agentOrigin+'/agent/track',{method:'POST',headers:{'content-type':'application/json'},signal:AbortSignal.any([disconnect.signal,AbortSignal.timeout(15000)]),body:JSON.stringify(input)});
+        if(!r.ok)return json(res,r.status>=400&&r.status<600?r.status:502,{error:'upstream_unavailable'});
+        return json(res,200,await r.json());
+      }
       if(!rate(owner)) return json(res,429,{error:'rate_limited'},{'retry-after':'60'});
       const input=await readBody(req);
       if(route==='/agent/segment') {

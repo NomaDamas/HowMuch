@@ -27,6 +27,23 @@ export class HttpSegmentationProvider {
   }
 }
 
+/** Live object tracking (video object segmentation on the server): start with the chosen outline, then step with each new frame. */
+export class HttpTrackProvider {
+  constructor(private readonly endpoint: string) {}
+  private async call(body: Record<string, unknown>, signal?: AbortSignal): Promise<{ ok: boolean; tracked?: boolean; reason?: string; busy?: boolean; selection?: Segment }> {
+    const response = await fetch(this.endpoint, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), signal });
+    if (response.status === 429) return { ok: true, busy: true };   // the server is behind: skip this frame, never queue stale ones
+    if (!response.ok) throw new Error('track_' + response.status);
+    const data = await response.json() as { track?: { ok: boolean; tracked?: boolean; reason?: string; selection?: Segment } };
+    const t = data.track ?? { ok: false };
+    if (t.selection && !valid(t.selection)) return { ok: true, tracked: false, reason: 'invalid' };
+    return t;
+  }
+  start(sid: string, imageDataUrl: string, contours: Point[][], signal?: AbortSignal) { return this.call({ op: 'start', sid, imageDataUrl, contours }, signal); }
+  step(sid: string, imageDataUrl: string, signal?: AbortSignal) { return this.call({ op: 'step', sid, imageDataUrl }, signal); }
+  end(sid: string) { return this.call({ op: 'end', sid }).catch(() => undefined); }
+}
+
 export class HttpResearchProvider implements ResearchAgentProvider {
   constructor(private readonly endpoint: string, private readonly jobsEndpoint?: string) {}
   private async stream(input: ResearchContext, signal?: AbortSignal, onPhase?: (event: {phase: string; candidate?: {name: string}; step?: unknown; activity?: unknown[]; price?: number; count?: number}) => void) {
@@ -75,6 +92,7 @@ export function providerConfig() {
     researchEndpoint: (import.meta.env.VITE_RESEARCH_ENDPOINT as string | undefined) || '/api/research',
     // Native app shells (UA contains HowMuchApp) and VITE_USE_JOBS=1 use the background-safe job transport.
     jobsEndpoint: (typeof navigator !== 'undefined' && /HowMuchApp/.test(navigator.userAgent)) || import.meta.env.VITE_USE_JOBS === '1' ? '/api/jobs' : undefined,
+    trackEndpoint: (import.meta.env.VITE_TRACK_ENDPOINT as string | undefined) || '/agent/track',
     segmentationEndpoint: (import.meta.env.VITE_SEGMENTATION_ENDPOINT as string | undefined) || '/agent/segment',
   };
 }

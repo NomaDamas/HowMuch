@@ -8,7 +8,7 @@ const shots = process.env.HOWMUCH_SHOTS;
 const server = await createServer({ cacheDir: 'node_modules/.vite-howmuch-ui', server: { host: '127.0.0.1', port: 0, hmr: false, watch: null }, logLevel: 'error' });
 let browser;
 // SAFETY: tests must never press a real star. Every context answers the star endpoints itself; specific scenarios override it.
-const newCtx = async opts => { const c = await browser.newContext(opts); await c.route('**/api/github/**', r => r.fulfill({ status: r.request().method() === 'GET' ? 200 : 501, json: { enabled: false } })); return c; };
+const newCtx = async opts => { const c = await browser.newContext(opts); await c.route('**/agent/track', r => r.fulfill({ json: { track: { ok: false } } })); await c.route('**/api/github/**', r => r.fulfill({ status: r.request().method() === 'GET' ? 200 : 501, json: { enabled: false } })); return c; };
 try {
   await server.listen(); browser = await chromium.launch();
   const ctx = await newCtx({ viewport: { width: 390, height: 780 }, hasTouch: true, deviceScaleFactor: 2 });
@@ -243,6 +243,42 @@ try {
     await p2.route('**/api/image-search/status', r => r.fulfill({ json: { available: false } }));
     await p2.goto(server.resolvedUrls.local[0]); await p2.getByRole('button', { name: 'Settings' }).click(); await p2.getByText('Advanced').click();
     assert.equal(await p2.getByRole('switch', { name: 'Image search (Google)' }).isDisabled(), true); await p2.getByText(/GOOGLE_VISION_API_KEY/).waitFor(); await c2.close();
+  }
+  // 14. Live following by server video object segmentation: the outline follows the answers, a lost object falls back, removing ends the session
+  {
+    const c = await newCtx({ viewport: { width: 390, height: 780 }, userAgent: IPHONE }); await c.addInitScript(camStub); const p = await c.newPage(); const calls = [];
+    const ring = (x, y) => [{ x, y }, { x: x + .2, y }, { x: x + .2, y: y + .2 }, { x, y: y + .2 }];
+    let step = 0, lose = false;
+    await p.route('**/agent/segment', r => r.fulfill({ json: { selections: [sel(.25, .33, 'product')], selection: sel(.25, .33, 'product'), model: 'stub' } }));
+    await p.route('**/api/research', () => {});
+    await p.route('**/agent/track', r => { const b = r.request().postDataJSON(); calls.push(b.op);
+      if (b.op === 'start') return r.fulfill({ json: { track: { ok: true } } });
+      if (b.op === 'end') return r.fulfill({ json: { track: { ok: true } } });
+      if (lose) return r.fulfill({ json: { track: { ok: true, tracked: false, reason: 'lost' } } });
+      step++; const x = Math.min(.7, .25 + step * .02), y = .33; r.fulfill({ json: { track: { ok: true, tracked: true, score: 8, selection: { x, y, width: .2, height: .2, polygon: ring(x, y), contours: [ring(x, y)] } } } }); });
+    await p.goto(server.resolvedUrls.local[0]); await p.waitForFunction(() => document.querySelector('video')?.readyState >= 2); await p.getByRole('button', { name: 'Touch · Draw' }).click(); await p.mouse.click(110, 270);
+    await p.waitForFunction(() => document.querySelectorAll('.contours path').length >= 1);
+    const firstX = await p.evaluate(() => { const d = document.querySelector('.contours path')?.getAttribute('d') || ''; return Number(d.match(/M([\d.]+)/)?.[1]); });
+    await p.waitForFunction(() => true); for (let i = 0; i < 100 && step < 8; i++) await p.waitForTimeout(100);
+    assert.ok(step >= 8, 'frames are sent to the server while the object is followed (' + step + ')'); assert.equal(calls[0], 'start');
+    const laterX = await p.evaluate(() => { const d = document.querySelector('.contours path')?.getAttribute('d') || ''; return Number(d.match(/M([\d.]+)/)?.[1]); });
+    assert.ok(laterX > firstX + .1, 'the outline moved with the server answers: ' + firstX + ' -> ' + laterX);
+    lose = true; for (let i = 0; i < 30; i++) await p.waitForTimeout(100);   // the server loses the object: no crash, no more frames
+    const before = calls.length; await p.waitForTimeout(800); assert.ok(calls.length - before <= 1, 'after a loss no more frames are sent');
+    await c.close();
+  }
+  // 15. Removing an object ends its server session
+  {
+    const c = await newCtx({ viewport: { width: 390, height: 780 }, userAgent: IPHONE }); await c.addInitScript(camStub); const p = await c.newPage(); const calls = [];
+    await p.route('**/agent/segment', r => r.fulfill({ json: { selections: [sel(.25, .33, 'product')], selection: sel(.25, .33, 'product'), model: 'stub' } }));
+    await p.route('**/api/research', () => {});
+    await p.route('**/agent/track', r => { const b = r.request().postDataJSON(); calls.push(b.op); r.fulfill({ json: { track: b.op === 'step' ? { ok: true, tracked: true, selection: sel(.25, .33, 'product') } : { ok: true } } }); });
+    await p.goto(server.resolvedUrls.local[0]); await p.waitForFunction(() => document.querySelector('video')?.readyState >= 2); await p.getByRole('button', { name: 'Touch · Draw' }).click(); await p.mouse.click(110, 270);
+    for (let i = 0; i < 60 && !calls.includes('step'); i++) await p.waitForTimeout(100);
+    const rm = p.locator('.job-chip-x').first(); await rm.waitFor(); await rm.click();
+    assert.equal(await p.locator('.job-chip-x').count(), 0, 'the chip is gone');
+    for (let i = 0; i < 30 && !calls.includes('end'); i++) await p.waitForTimeout(100);
+    assert.ok(calls.includes('end'), 'the session is ended when the object is removed: ' + calls.join(',')); await c.close();
   }
   assert.deepEqual(errors, []);
   console.log('PASS: star gate before camera, English default, Korean switch, compact card, filter bar, details behind a toggle, swipe/tap close, hidden scrollbars, no attribution on camera, person card without play-price wording, outline persists when the object is lost or the phone turns and returns, no star prompt on phones or the app shell, real star actions only after a tap (signed-in gh, on-screen sign-in, Settings on a phone), pairing QR switchable between the app link and the browser link, outline held without motion sensors, live work state (name first, then the real agent actions).');
