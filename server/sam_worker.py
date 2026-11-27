@@ -21,14 +21,57 @@ torch.set_num_threads(min(4, os.cpu_count() or 1))
 cv2.setNumThreads(1)
 
 
+MODELS = {"tiny": ("t", "sam2.1_hiera_tiny.pt"), "small": ("s", "sam2.1_hiera_small.pt"),
+          "base": ("b+", "sam2.1_hiera_base_plus.pt"), "large": ("l", "sam2.1_hiera_large.pt")}
+
+
+def pick_device():
+    if os.environ.get("HOWMUCH_SAM_DEVICE"):
+        return os.environ["HOWMUCH_SAM_DEVICE"]
+    if torch.cuda.is_available():
+        return "cuda"
+    return "mps" if torch.backends.mps.is_available() else "cpu"
+
+
+def pick_model(device):
+    """One-shot cut-outs can afford the big model on a GPU (0.8 s on Apple M2 Pro); a plain CPU keeps the tiny one."""
+    wanted = os.environ.get("HOWMUCH_SAM_MODEL", "auto")
+    if wanted == "auto":
+        wanted = "large" if device in ("cuda", "mps") else "tiny"
+    if wanted not in MODELS or not (ROOT / ".howmuch/sam" / MODELS[wanted][1]).exists():
+        wanted = "tiny"
+    return wanted
+
+
 def load_model():
-    weights = ROOT / ".howmuch/sam/sam2.1_hiera_tiny.pt"
-    device = os.environ.get("HOWMUCH_SAM_DEVICE",
-                            "cuda" if torch.cuda.is_available() else
-                            "cpu")
-    model = build_sam2_video_predictor("configs/sam2.1/sam2.1_hiera_t.yaml", str(weights),
+    device = pick_device()
+    kind = pick_model(device)
+    code, name = MODELS[kind]
+    model = build_sam2_video_predictor(f"configs/sam2.1/sam2.1_hiera_{code}.yaml", str(ROOT / ".howmuch/sam" / name),
                        device=device, apply_postprocessing=False)
+    print(f"segmentation model {kind} on {device}", file=sys.stderr, flush=True)
     return SAM2ImagePredictor(model, max_hole_area=0, max_sprinkle_area=0)
+
+
+def clean_mask(mask):
+    """Drop speckle and pinholes: keep components over 0.4% of the object and fill holes under 0.3%."""
+    m = mask.astype("uint8")
+    total = int(m.sum())
+    if total == 0:
+        return mask
+    n, lab, stats, _ = cv2.connectedComponentsWithStats(m, connectivity=8)
+    keep = np.zeros_like(m)
+    for i in range(1, n):
+        if stats[i, cv2.CC_STAT_AREA] >= max(8, 0.004 * total) or i == 1 + int(np.argmax(stats[1:, cv2.CC_STAT_AREA])):
+            keep[lab == i] = 1
+    inv = (1 - keep).astype("uint8")
+    n, lab, stats, _ = cv2.connectedComponentsWithStats(inv, connectivity=4)
+    for i in range(1, n):
+        x, y, w, h = stats[i, :4]
+        touches = x == 0 or y == 0 or x + w == keep.shape[1] or y + h == keep.shape[0]
+        if not touches and stats[i, cv2.CC_STAT_AREA] <= max(6, 0.003 * total):
+            keep[lab == i] = 1
+    return keep.astype(bool)
 
 
 def read_image(data):
@@ -39,11 +82,13 @@ def read_image(data):
         if original.format not in {"PNG", "JPEG", "WEBP"} or original.width * original.height > PIXELS:
             raise ValueError("invalid_image")
         image = ImageOps.exif_transpose(original).convert("RGB")
-        image.thumbnail((800, 800), Image.Resampling.LANCZOS)
+        image.thumbnail((1024, 1024), Image.Resampling.LANCZOS)
         return np.array(image)
 
 
 def encode(mask, rgb, cutout=True):
+    if cutout:
+        mask = clean_mask(mask)
     h, w = mask.shape
     contours, hierarchy = cv2.findContours(mask.astype("uint8"), cv2.RETR_CCOMP,
                                            cv2.CHAIN_APPROX_SIMPLE)
@@ -55,7 +100,7 @@ def encode(mask, rgb, cutout=True):
         c = contours[i]
         if cv2.contourArea(c) < 6:
             continue
-        p = cv2.approxPolyDP(c, max(0.7, 0.003 * cv2.arcLength(c, True)), True)
+        p = cv2.approxPolyDP(c, max(0.5, 0.0013 * cv2.arcLength(c, True)), True)
         if len(p) >= 3:
             rings.append([{"x": round(float(x) / w, 6), "y": round(float(y) / h, 6)}
                           for x, y in p.reshape(-1, 2)])
@@ -65,8 +110,10 @@ def encode(mask, rgb, cutout=True):
     if not cutout:   # live tracking only needs the outline: skip the PNG
         return {"x": x/w, "y": y/h, "width": bw/w, "height": bh/h, "polygon": rings[0], "contours": rings}
     crop_mask = mask[y:y+bh, x:x+bw]
-    rgba = np.dstack((rgb[y:y+bh, x:x+bw], crop_mask.astype("uint8") * 255))
-    rgba[~crop_mask] = 0  # Do not send RGB data for non-selected pixels.
+    soft = cv2.GaussianBlur(crop_mask.astype("uint8") * 255, (0, 0), 0.9)   # 1 px anti-aliased edge instead of stair steps
+    soft[crop_mask & (soft < 200)] = 200
+    rgba = np.dstack((rgb[y:y+bh, x:x+bw], soft))
+    rgba[soft == 0] = 0  # Do not send RGB data for non-selected pixels.
     out = io.BytesIO()
     Image.fromarray(rgba).save(out, format="PNG", compress_level=3)
     return {"x": x/w, "y": y/h, "width": bw/w, "height": bh/h,

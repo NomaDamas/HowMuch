@@ -36,3 +36,20 @@ Once an outline is chosen (tap, drawing, or Auto), the app follows the object th
 * The tracker uses a 512 px model input (`HOWMUCH_TRACK_SIZE`) on the Apple GPU when present (`HOWMUCH_TRACK_DEVICE`, default `mps`, else `cpu`). Measured on an M2 Pro with synthetic motion (up to 25 degrees of rotation and 25 % zoom over 24 frames): 512 px about 70 ms per frame and IoU 0.89, 768 px about 240 ms and 0.91, 1024 px about 390 ms and 0.92. On CPU a frame took about 1.5 s at 1024 px. These are synthetic transforms of still photos, not real camera video.
 * `server/sam_track.py` feeds frames one by one into the upstream predictor and keeps only the newest 9 frames of memory, so memory stays bounded.
 * The browser sends about 6 frames per second per object (one object at a time takes its turn); when the server is behind it answers 429 and the frame is skipped. When the server loses the object the earlier template tracker and the SAM refresh take over. Removing an object ends its session; idle sessions expire after 60 s; at most 6 sessions.
+
+## Cut-out quality (segmentation model)
+
+One-shot cut-outs (tap, draw, auto) use SAM 2.1 **large** when a GPU is present (Apple MPS or CUDA) and fall back to tiny on a plain CPU. Override with `HOWMUCH_SAM_MODEL=tiny|small|base|large`. Live following keeps using tiny at 512 px for speed; its seed is the large model's mask, so it starts from a better outline.
+
+Measured on this Mac (31 objects from `eval/images`, box prompts, large as the reference):
+
+| model | s/object (MPS) | IoU vs large | boundary F (2 px) |
+|---|---|---|---|
+| tiny | 0.10 | 0.78 | 0.55 |
+| small | 0.19 | 0.75 | 0.62 |
+| base+ | 0.35 | 0.86 | 0.69 |
+| large | 0.80 | 1.00 (reference) | 1.00 |
+
+There is no ground-truth mask set, so these numbers measure agreement with the large model, not absolute accuracy. Side-by-side overlays showed tiny leaving speckle and holes and cutting off handles, while large kept whole objects.
+
+Also changed: input up to 1024 px (was 800), speckle/pinhole cleanup on the mask, finer contour simplification (0.13% of the perimeter, was 0.3%), and a 1 px anti-aliased cut-out edge.
