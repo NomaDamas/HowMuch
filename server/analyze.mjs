@@ -72,9 +72,21 @@ export async function researchAgent(input, signal, onPhase) {
   return result;
 }
 const imageValid = v=> typeof v==='string' && /^data:image\/(jpeg|jpg|png|webp);base64,/i.test(v) && v.length<=12000000;
+/** Only devices on the same private network (or this machine) may reach the phone server. */
+export function privateAddress(a=''){
+  const ip=String(a).replace(/^::ffff:/,'');
+  if(ip==='::1'||/^fe80:/i.test(ip)||/^f[cd][0-9a-f]{2}:/i.test(ip))return true;
+  const p=ip.split('.').map(Number); if(p.length!==4||p.some(n=>!Number.isInteger(n)||n<0||n>255))return false;
+  return p[0]===10||p[0]===127||(p[0]===192&&p[1]===168)||(p[0]===172&&p[1]>=16&&p[1]<=31)||(p[0]===169&&p[1]===254);
+}
+const PAGE_HEADERS={'referrer-policy':'no-referrer','x-content-type-options':'nosniff','cache-control':'no-store','x-frame-options':'DENY','cross-origin-opener-policy':'same-origin','cross-origin-resource-policy':'same-origin',
+  'permissions-policy':'camera=(self), microphone=(), geolocation=(), payment=(), usb=(), accelerometer=(self), gyroscope=(self), magnetometer=(self)',
+  'content-security-policy':"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; media-src 'self' blob:; connect-src 'self'; font-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"};
 export function gateway({phoneOrigin, research=researchAgent, agentOrigin='http://127.0.0.1:8791'}={}) {
   const pairing=pairingStore(Date.now,{file:process.env.HOWMUCH_PAIRING_FILE||resolve('.howmuch','pairing.json')}), jobs=jobStore(), star=githubStar(), gh=ghLocal(), budget=new Map(); let active=0;
-  const tracks=new Map();
+  const tracks=new Map(), exchangeFails=new Map();
+  const locked=ip=>{const v=exchangeFails.get(ip);return !!v&&v.until>Date.now()&&v.n>=8};
+  const failed=ip=>{const t=Date.now();for(const [k,v] of exchangeFails)if(v.until<=t)exchangeFails.delete(k);const v=exchangeFails.get(ip)||{n:0,until:t+300000};v.n++;if(v.n>=8)v.until=t+300000;exchangeFails.set(ip,v)};
   function trackRate(owner) {
     const t=Date.now(); for(const [id,v] of tracks) if(v.at<=t-2000) tracks.delete(id);
     const v=tracks.get(owner)||{at:t,n:0}; tracks.set(owner,v); if(t-v.at>1000){v.at=t;v.n=0} return ++v.n<=40;
@@ -101,8 +113,9 @@ export function gateway({phoneOrigin, research=researchAgent, agentOrigin='http:
         return json(res,201,{sessionId,expiresAt,url:phoneOrigin+'/#pair='+sessionId+'.'+token});
       }
       if (route==='/v1/pairing/exchange' && req.method==='POST' && isPhone) {
+        const ip=req.socket.remoteAddress||''; if(locked(ip)) return json(res,429,{error:'too_many_attempts'},{'retry-after':'300'});
         const body=await readBody(req,2048), c=pairing.exchange(body?.sessionId,body?.token);
-        if(!c) return json(res,401,{error:'invalid_or_expired'});
+        if(!c){failed(ip);return json(res,401,{error:'invalid_or_expired'});}
         return json(res,200,{expiresAt:c.expiresAt},{'set-cookie':'__Host-howmuch='+c.id+'.'+c.clientToken+'; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=604800'});
       }
       const [sid,token]=(req.headers.cookie?.match(/(?:^|;\s*)__Host-howmuch=([^;]+)/)?.[1]||'').split('.');
@@ -184,10 +197,11 @@ export async function start() {
   if(!origin)return;
   const url=new URL(origin);
   const server=https.createServer({cert:await readFile(process.env.HOWMUCH_TLS_CERT),key:await readFile(process.env.HOWMUCH_TLS_KEY)},async(req,res)=>{
+    if(!privateAddress(req.socket.remoteAddress)){req.socket.destroy();return}   // a port-forward or tunnel from the public internet is dropped
     const path=req.url.split('?')[0]; if(path.startsWith('/api/')||path.startsWith('/v1/')||path.startsWith('/agent/'))return api.phone(req,res);
     const asset=path==='/'?'index.html':/^\/assets\/[\w.-]+\.(js|css|svg|png|woff2)$/.test(path)?path.slice(1):null;
     if(!asset || req.method!=='GET')return json(res,404,{error:'not_found'});
-    try { const bytes=await readFile(resolve('dist',asset)); res.writeHead(200,{'content-type':({html:'text/html',js:'text/javascript',css:'text/css',svg:'image/svg+xml',png:'image/png',woff2:'font/woff2'})[asset.split('.').at(-1)],'referrer-policy':'no-referrer','x-content-type-options':'nosniff','cache-control':'no-store'});res.end(bytes); }catch{return json(res,404,{error:'build_required'});}
+    try { const bytes=await readFile(resolve('dist',asset)); res.writeHead(200,{'content-type':({html:'text/html',js:'text/javascript',css:'text/css',svg:'image/svg+xml',png:'image/png',woff2:'font/woff2'})[asset.split('.').at(-1)],...PAGE_HEADERS});res.end(bytes); }catch{return json(res,404,{error:'build_required'});}
   });server.listen(Number(url.port)||443,url.hostname,()=>console.log('HowMuch phone: '+origin));
 }
 if(process.argv[1] && import.meta.url===pathToFileURL(resolve(process.argv[1])).href)await start();

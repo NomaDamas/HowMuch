@@ -14,7 +14,7 @@ export function pairingStore(now=Date.now,{file,clientMs=CLIENT_MS}={}){
  function save(){if(!file)return;try{mkdirSync(dirname(file),{recursive:true});const out={};for(const [id,s] of sessions)if(s.client)out[id]={client:s.client,expiresAt:s.expiresAt};writeFileSync(file,JSON.stringify(out),{mode:0o600});chmodSync(file,0o600)}catch{/* persistence is best effort */}}
  function trim(){let changed=false;for(const [id,s] of sessions)if(s.expiresAt<=now()){sessions.delete(id);changed=true}if(changed)save()}
  return {
- create(){trim();if(sessions.size>=32)throw Error('capacity'); const sessionId=randomUUID(),token=randomBytes(24).toString('base64url'),expiresAt=now()+INVITE_MS; sessions.set(sessionId,{token:digest(token),expiresAt});return {sessionId,token,expiresAt}},
+ create(){trim();while(sessions.size>=32){const old=[...sessions].find(([,v])=>!v.client)||[...sessions][0];sessions.delete(old[0]);save()} const sessionId=randomUUID(),token=randomBytes(24).toString('base64url'),expiresAt=now()+INVITE_MS; sessions.set(sessionId,{token:digest(token),expiresAt});return {sessionId,token,expiresAt}},
  exchange(id,token){trim();const s=sessions.get(id);if(!s?.token||s.token!==digest(token))return null;delete s.token;const clientToken=randomBytes(32).toString('base64url');s.client=digest(clientToken);s.expiresAt=now()+clientMs;save();return {id,clientToken,expiresAt:s.expiresAt}},
  valid(id,token){trim();const s=sessions.get(id);if(!s||s.client!==digest(token))return false;const next=now()+clientMs;if(next-s.expiresAt>3600e3){s.expiresAt=next;save()}return true},
  revoke(id){sessions.delete(id);save()}};

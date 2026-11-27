@@ -46,19 +46,21 @@ button:focus-visible,a:focus-visible,input:focus-visible{outline:2px solid var(-
 .reticle i{position:absolute;width:34px;height:34px;border:3px solid var(--accent);filter:drop-shadow(0 0 6px #c8ff5a88)}
 .reticle i:nth-child(1){left:0;top:0;border-right:0;border-bottom:0;border-radius:14px 0 0 0}.reticle i:nth-child(2){right:0;top:0;border-left:0;border-bottom:0;border-radius:0 14px 0 0}
 .reticle i:nth-child(3){left:0;bottom:0;border-right:0;border-top:0;border-radius:0 0 0 14px}.reticle i:nth-child(4){right:0;bottom:0;border-left:0;border-top:0;border-radius:0 0 14px 0}
-@keyframes breathe{50%{transform:translate(-50%,-50%) scale(1.045)}}
+@keyframes breathe{0%,100%{opacity:.75}50%{opacity:1}}
 
 /* ---------- cut-out outline, anchor, ghosts ---------- */
 .contours{z-index:2;pointer-events:none}
-.contours path{fill:none;stroke:#b794ff;stroke-width:1.6;vector-effect:non-scaling-stroke;stroke-linejoin:round;filter:drop-shadow(0 0 5px rgba(170,120,255,.85)) drop-shadow(0 0 16px rgba(140,90,255,.5));animation:breathe 2.8s ease-in-out infinite}
+.contours path{fill:none;stroke:#b184ff;vector-effect:non-scaling-stroke;stroke-linejoin:round;stroke-linecap:round}
+.halo path{stroke-opacity:.075}
+.haze path{stroke-opacity:.07}
+.halo,.haze{animation:breathe 2.8s ease-in-out infinite}
 .contours.glow path.glow-fill{fill:rgba(150,100,255,.08);stroke:none;filter:none;animation:fillin .9s ease-out both}
-.contours.glow path.glow-edge{animation:edgein .9s ease-out both,breathe 2.8s ease-in-out .9s infinite}
 .glow-sweep{transform-box:fill-box;mix-blend-mode:screen;animation:sweep 1s cubic-bezier(.3,.1,.3,1) both,sweep 1.4s ease-in-out 3.2s infinite}
 @keyframes sweep{from{transform:translateX(-60%);opacity:0}15%{opacity:1}to{transform:translateX(320%);opacity:0}}
 @keyframes fillin{from{opacity:0}to{opacity:1}}
-@keyframes edgein{from{opacity:0;stroke-width:5}to{opacity:1;stroke-width:1.6}}
+@keyframes edgein{from{opacity:0;stroke-width:34}to{opacity:1;stroke-width:16}}
 @keyframes breathe{0%,100%{opacity:.75}50%{opacity:1}}
-.contours.ghost path{stroke-opacity:.6;animation-duration:3.6s}
+
 @keyframes ants{to{stroke-dashoffset:-26}}
 .leader{position:absolute;inset:0;width:100%;height:100%;z-index:3;pointer-events:none;overflow:visible}
 .leader line{stroke:rgba(200,255,90,.75);stroke-width:1.5;stroke-dasharray:3 4;filter:drop-shadow(0 0 4px rgba(200,255,90,.7))}
