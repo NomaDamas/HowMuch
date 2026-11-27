@@ -255,7 +255,13 @@ function App(){
    </div></div>
    <ItemBar items={items} filter={filter} setFilter={setFilter} cancel={cancelJob} fun={fun}/>
    {cameraError&&<button className="retry" onClick={startCamera}><Camera size={16}/>{t('cam.retry')}</button>}
-   <svg className="contours cutout-outline" viewBox="0 0 1 1" preserveAspectRatio="none" aria-hidden="true">{shown.map(({o,s})=><path key={o.id} fillRule="evenodd" d={(s.contours?.length?s.contours:[s.polygon]).map(r=>r.map((p,i)=>(i?'L':'M')+p.x+' '+p.y).join(' ')+'Z').join(' ')}/>)}</svg>
+   <svg className="contours cutout-outline glow" viewBox="0 0 1 1" preserveAspectRatio="none" aria-hidden="true">
+    <defs><linearGradient id="scanGrad" x1="0" x2="1" y1="0" y2="0"><stop offset="0" stopColor="#a678ff" stopOpacity="0"/><stop offset=".55" stopColor="#b48cff" stopOpacity=".34"/><stop offset="1" stopColor="#d8c4ff" stopOpacity="0"/></linearGradient></defs>
+    {shown.map(({o,s})=>{const d=(s.contours?.length?s.contours:[s.polygon]).map(r=>r.map((p,i)=>(i?'L':'M')+p.x+' '+p.y).join(' ')+'Z').join(' ');return <g key={o.id}><clipPath id={'cp'+o.id}><path d={d}/></clipPath>
+     <path className="glow-fill" fillRule="evenodd" d={d}/>
+     <g clipPath={'url(#cp'+o.id+')'}><rect className="glow-sweep" x={s.x-s.width*.2} y={s.y} width={s.width*.7} height={s.height} fill="url(#scanGrad)"/></g>
+     <path className="glow-edge" fillRule="evenodd" d={d}/></g>})}
+   </svg>
    <GhostLayer enabled={gyro} jobs={jobs} video={v} size={size} filter={filter} label={o=>nameOf(o)}/>
    {!isCapturing&&shown.map(({o,s,box})=>{const ax=(s.x+s.width/2)*size.width,ay=(s.y+s.height/2)*size.height,tilt={ry:Math.max(-18,Math.min(18,(ax/size.width-.5)*-36)),rx:Math.max(-8,Math.min(8,(ay/size.height-.5)*10)),k:Math.max(.86,Math.min(1.22,.78+Math.sqrt(s.width*s.height)*1.5))};return <React.Fragment key={o.id}><Leader box={box} ax={ax} ay={ay} phase={o.phase}/><Hud o={o} box={box} tilt={tilt} fun={fun} measure={(id,n)=>setMeasured(m=>m[id]?.width===n.width&&m[id]?.height===n.height?m:{...m,[id]:n})} open={()=>setDetail(o.id)}/><button className="card-dismiss" style={{left:box.x+box.width-25,top:box.y+5}} aria-label={t('sheet.cancelItem',{n:o.id})} onClick={e=>{e.stopPropagation();cancelJob(o.id)}}>X</button></React.Fragment>})}
    {pill&&!isCapturing&&<div className="hint" role="status">{pill}</div>}
